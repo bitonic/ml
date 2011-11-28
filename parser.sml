@@ -7,6 +7,8 @@ struct
     type ('t, 'r) parser = 't list -> ('r result * 't list)
     type pos = int
 
+    fun parse (p, l) = p l
+
     fun return x inp = (Success x, inp)
     fun bind (p, f) inp = let fun cont (Success x, inp') = f x inp'
                                 | cont (Fail s, inp')    = (Fail s, inp')
@@ -20,8 +22,8 @@ struct
 
     fun fail s inp = (Fail s, inp)
     fun plus (l, r) inp = case l inp
-                              of (Success t, inp) => (Success t, inp)
-                               | _                => r inp
+                           of (Success t, inp) => (Success t, inp)
+                            | _                => r inp
     infix 1 ++
     fun l ++ r = plus (l, r)
 

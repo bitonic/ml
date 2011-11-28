@@ -7,6 +7,8 @@ sig
     type ('t, 'r) parser
     type pos = int
 
+    val parse : ('t, 'r) parser * 't list -> ('r result * 't list)
+
     val return : 'r -> ('t, 'r) parser
     val bind : ('t, 'a) parser * ('a -> ('t, 'b) parser) -> ('t, 'b) parser
     val >>= : ('t, 'a) parser * ('a -> ('t, 'b) parser) -> ('t, 'b) parser

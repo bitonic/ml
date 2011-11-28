@@ -20,6 +20,7 @@ struct
     exception ParseException of string
     exception TypeException of string
 
+    structure Parser = ParserFun (structure T = CharToken)
     open Parser
 
     val exp = String.explode

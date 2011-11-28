@@ -4,41 +4,46 @@ infix 1 >>=
 infix 1 >>
 infix 1 ++
 
-structure Parser :> PARSER =
+functor ParserFun (structure T : TOKEN) :> PARSER where type t = T.t =
 struct
     datatype 'r result
       = Success of 'r
       | Fail of string
-    type ('t, 'r) parser = 't list -> ('r result * 't list)
-    type pos = int
 
-    fun parse (p, l) = p l
+    type t = T.t
 
-    fun return x inp = (Success x, inp)
-    fun bind (p, f) inp = let fun cont (Success x, inp') = f x inp'
-                                | cont (Fail s, inp')    = (Fail s, inp')
-                          in cont (p inp)
-                          end
+    type stream = T.t list
+    type state = T.pos * stream
+    type 'r parser = T.pos * stream -> ('r result * state)
 
-    fun p >>= f = bind (p, f)
+    fun parse (p, l) = case p ((0, 0), l) of (r, (_, inp)) => (r, inp)
+
+    fun return x s = (Success x, s)
+    fun bind p f s = let fun cont (Success x, s') = f x s'
+                           | cont (Fail s, s')    = (Fail s, s')
+                       in cont (p s)
+                       end
+
+    fun p >>= f = bind p f
     fun l >> r = l >>= (fn _ => r)
     fun lift f p = p >>= (fn x => return (f x))
     fun lift2 f p1 p2 = p1 >>= (fn x => lift (fn y => f (x, y)) p2)
 
-    fun fail s inp = (Fail s, inp)
-    fun plus (l, r) inp = case l inp
-                           of (Success t, inp) => (Success t, inp)
-                            | _                => r inp
+    fun fail err s = (Fail err, s)
+    fun plus l r s = case l s
+                        of (Success t, s) => (Success t, s)
+                         | _                => r s
 
-    fun l ++ r = plus (l, r)
+    fun l ++ r = plus l r
 
-    fun item _ []         = (Fail "Parsec.item: no input", [])
-      | item x (y :: inp) = if x = y then (Success x, inp)
-                            else (Fail "Parsec.item: no match", y :: inp)
+    fun any (pos, [])       = (Fail "Parsec.any: no input", (pos, []))
+      | any (pos, x :: inp) = (Success x, (T.move (x, pos), inp))
+    fun item x = let fun check y = if x = y then return x
+                                   else fail "Parsec.item: no match"
+                 in any >>= check
+                 end
     fun items []        = return []
-      | items (x :: xs) = item x >> items xs >>= (fn _ => return (x :: xs))
-    fun eof []  = (Success (), [])
-      | eof inp = (Fail "Parser.eof: not end of file", inp)
+      | items (x :: xs) = item x >> lift (fn _ => x :: xs) (items xs)
     fun many p = p >>= (fn x => lift (fn xs => x :: xs) (many p)) ++ return []
     fun many1 p = p >>= (fn x => lift (fn xs => x :: xs) (many1 p))
     fun one_of ps =

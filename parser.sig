@@ -4,26 +4,28 @@ sig
     datatype 'r result
       = Success of 'r
       | Fail of string
-    type ('t, 'r) parser
-    type pos = int
 
-    val parse : ('t, 'r) parser * 't list -> ('r result * 't list)
+    eqtype t
 
-    val return : 'r -> ('t, 'r) parser
-    val bind : ('t, 'a) parser * ('a -> ('t, 'b) parser) -> ('t, 'b) parser
-    val >>= : ('t, 'a) parser * ('a -> ('t, 'b) parser) -> ('t, 'b) parser
-    val >> : ('t, 'a) parser * ('t, 'b) parser -> ('t, 'b) parser
-    val lift : ('a -> 'b) -> ('t, 'a) parser -> ('t , 'b) parser
-    val lift2 : ('a * 'b -> 'c) -> ('t, 'a) parser -> ('t, 'b) parser -> ('t , 'c) parser
+    type 'r parser
 
-    val fail : string -> ('t, 'r) parser
-    val plus : ('t, 'r) parser * ('t, 'r) parser -> ('t, 'r) parser
-    val ++ : ('t, 'r) parser * ('t, 'r) parser -> ('t, 'r) parser
+    val parse : 'r parser * t list -> ('r result * t list)
 
-    val item : ''t -> (''t, ''t) parser
-    val items : ''t list -> (''t, ''t list) parser
-    val eof : ('t, unit) parser
-    val many : (''t, ''r) parser -> (''t, ''r list) parser
-    val many1 : (''t, ''r) parser -> (''t, ''r list) parser
-    val one_of : ''t list -> (''t, ''t) parser
+    val return : 'r -> 'r parser
+    val bind : 'a parser -> ('a -> 'b parser) -> 'b parser
+    val >>= : 'a parser * ('a -> 'b parser) -> 'b parser
+    val >> : 'a parser * 'b parser -> 'b parser
+    val lift : ('a -> 'b) -> 'a parser -> 'b parser
+    val lift2 : ('a * 'b -> 'c) -> 'a parser -> 'b parser -> 'c parser
+
+    val fail : string -> 'r parser
+    val plus : 'r parser -> 'r parser -> 'r parser
+    val ++ : 'r parser * 'r parser -> 'r parser
+
+    val any : t parser
+    val item : t -> t parser
+    val items : t list -> (t list) parser
+    val many : 'r parser -> ('r list) parser
+    val many1 : 'r parser -> ('r list) parser
+    val one_of : t list -> t parser
 end

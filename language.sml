@@ -7,7 +7,8 @@
           | fix <var> -> <expr>
  *)
 
-structure Language :> LANGUAGE =
+(* structure Language :> LANGUAGE = *)
+structure Language =
 struct
     type id = string
     datatype expr
@@ -40,7 +41,7 @@ struct
         let
             val var = lift (fn s => Var s) id_p
             fun abs () = items (exp "fn") >> space >> items (exp "=>") >> space >> parser ()
-            fun app () = lift2 App (parser ()) (parser ())
+            fun app () = lift2 App (parser () <* many1 space) (parser ())
         in
             var ++ abs ++ app
         end

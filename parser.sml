@@ -23,6 +23,12 @@ struct
     fun l >> r = l >>= (fn _ => r)
     fun lift f p = p >>= (fn x => return (f x))
     fun lift2 f p1 p2 = p1 >>= (fn x => lift (fn y => f (x, y)) p2)
+    fun l *> r = l >> r
+    fun l <* r = l >>= (fn x => r >> return x)
+
+    fun try p s = case p s
+                       of (Fail err, _) => (Fail err, s)
+                        | succ          => succ
 
     fun fail err s = (Fail err, s)
     fun plus l r s = case l s
@@ -39,8 +45,8 @@ struct
                  end
     fun items []        = return []
       | items (x :: xs) = item x >> lift (fn _ => x :: xs) (items xs)
-    fun many p = p >>= (fn x => lift (fn xs => x :: xs) (many p)) ++ susp (return [])
-    fun many1 p = p >>= (fn x => lift (fn xs => x :: xs) (many1 p))
+    fun many p = (try p >>= (fn x => lift (fn xs => x :: xs) (many p))) ++ susp (return [])
+    fun many1 p = p >>= (fn x => lift (fn xs => x :: xs) (many p))
     fun one_of ps =
         let fun f (x, sum) = sum ++ susp (item x)
         in List.foldr f (fail "Parser.one_of: No items") ps

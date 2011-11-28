@@ -2,7 +2,9 @@
 (* Fixity declarations don't follow normal eclipsing rules, which sucks *)
 infix 1 >>=
 infix 1 >>
-infix 1 ++
+infix 2 ++
+infix 3 *>
+infix 3 <*
 
 signature PARSER =
 sig
@@ -22,6 +24,10 @@ sig
     val >> : 'a parser * 'b parser -> 'b parser
     val lift : ('a -> 'b) -> 'a parser -> 'b parser
     val lift2 : ('a * 'b -> 'c) -> 'a parser -> 'b parser -> 'c parser
+    val *> : 'a parser * 'b parser -> 'b parser
+    val <* : 'a parser * 'b parser -> 'a parser
+
+    val try : 'a parser -> 'a parser
 
     val fail : string -> 'r parser
     val plus : 'r parser -> (unit -> 'r parser) -> 'r parser

@@ -1,9 +1,4 @@
 
-(* Fixity declarations don't follow normal eclipsing rules, which sucks *)
-infix 1 >>=
-infix 1 >>
-infix 1 ++
-
 functor ParserFun (structure T : TOKEN) :> PARSER where type t = T.t =
 struct
     datatype 'r result
@@ -32,7 +27,7 @@ struct
     fun fail err s = (Fail err, s)
     fun plus l r s = case l s
                         of (Success t, s) => (Success t, s)
-                         | _                => r s
+                         | _                => r () s
 
     fun l ++ r = plus l r
 
@@ -44,8 +39,10 @@ struct
                  end
     fun items []        = return []
       | items (x :: xs) = item x >> lift (fn _ => x :: xs) (items xs)
-    fun many p = p >>= (fn x => lift (fn xs => x :: xs) (many p)) ++ return []
+    fun many p = p >>= (fn x => lift (fn xs => x :: xs) (many p)) ++ susp (return [])
     fun many1 p = p >>= (fn x => lift (fn xs => x :: xs) (many1 p))
     fun one_of ps =
-        List.foldr (fn (x, sum) => sum ++ item x) (fail "Parser.one_of: No items") ps
+        let fun f (x, sum) = sum ++ susp (item x)
+        in List.foldr f (fail "Parser.one_of: No items") ps
+        end
 end

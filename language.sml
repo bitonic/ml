@@ -32,16 +32,17 @@ struct
     val space = one_of [#"\t", #" ", #"\n"]
 
     val id_p = letter >>=
-               (fn c => lift (fn s => imp (c :: s)) (many (letter ++ digit ++ symbol)))
+               (fn c => lift (fn s => imp (c :: s))
+                             (many (letter ++ susp digit ++ susp symbol)))
 
 
     fun parser () =
         let
             val var = lift (fn s => Var s) id_p
-            val abs = items (exp "fn") >> space >> items (exp "=>") >> space >> parser ()
-            val app = lift2 App (parser ()) (parser ())
+            fun abs () = items (exp "fn") >> space >> items (exp "=>") >> space >> parser ()
+            fun app () = lift2 App (parser ()) (parser ())
         in
-            var ++ abs
+            var ++ abs ++ app
         end
 
     fun parse s =

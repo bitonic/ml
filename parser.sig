@@ -1,4 +1,9 @@
 
+(* Fixity declarations don't follow normal eclipsing rules, which sucks *)
+infix 1 >>=
+infix 1 >>
+infix 1 ++
+
 signature PARSER =
 sig
     datatype 'r result
@@ -19,8 +24,8 @@ sig
     val lift2 : ('a * 'b -> 'c) -> 'a parser -> 'b parser -> 'c parser
 
     val fail : string -> 'r parser
-    val plus : 'r parser -> 'r parser -> 'r parser
-    val ++ : 'r parser * 'r parser -> 'r parser
+    val plus : 'r parser -> (unit -> 'r parser) -> 'r parser
+    val ++ : 'r parser * (unit -> 'r parser) -> 'r parser
 
     val any : t parser
     val item : t -> t parser

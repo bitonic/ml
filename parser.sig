@@ -14,6 +14,7 @@ sig
     val >>= : ('t, 'a) parser * ('a -> ('t, 'b) parser) -> ('t, 'b) parser
     val >> : ('t, 'a) parser * ('t, 'b) parser -> ('t, 'b) parser
     val lift : ('a -> 'b) -> ('t, 'a) parser -> ('t , 'b) parser
+    val lift2 : ('a * 'b -> 'c) -> ('t, 'a) parser -> ('t, 'b) parser -> ('t , 'c) parser
 
     val fail : string -> ('t, 'r) parser
     val plus : ('t, 'r) parser * ('t, 'r) parser -> ('t, 'r) parser

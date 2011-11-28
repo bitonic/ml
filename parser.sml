@@ -1,4 +1,9 @@
 
+(* Fixity declarations don't follow normal eclipsing rules, which sucks *)
+infix 1 >>=
+infix 1 >>
+infix 1 ++
+
 structure Parser :> PARSER =
 struct
     datatype 'r result
@@ -14,17 +19,17 @@ struct
                                 | cont (Fail s, inp')    = (Fail s, inp')
                           in cont (p inp)
                           end
-    infix 1 >>=
+
     fun p >>= f = bind (p, f)
-    infix 1 >>
     fun l >> r = l >>= (fn _ => r)
     fun lift f p = p >>= (fn x => return (f x))
+    fun lift2 f p1 p2 = p1 >>= (fn x => lift (fn y => f (x, y)) p2)
 
     fun fail s inp = (Fail s, inp)
     fun plus (l, r) inp = case l inp
                            of (Success t, inp) => (Success t, inp)
                             | _                => r inp
-    infix 1 ++
+
     fun l ++ r = plus (l, r)
 
     fun item _ []         = (Fail "Parsec.item: no input", [])

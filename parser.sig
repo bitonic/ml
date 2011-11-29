@@ -25,6 +25,7 @@ sig
     val >> : 'a susp * 'b susp -> 'b susp
     val lift : ('a -> 'b) -> 'a susp -> 'b susp
     val lift2 : ('a * 'b -> 'c) -> 'a susp -> 'b susp -> 'c susp
+    val lift3 : ('a * 'b * 'c -> 'd) -> 'a susp -> 'b susp -> 'c susp -> 'd susp
     val *> : 'a susp * 'b susp -> 'b susp
     val <* : 'a susp * 'b susp -> 'a susp
 

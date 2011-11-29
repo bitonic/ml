@@ -28,6 +28,8 @@ struct
 
     fun lift2 f p1 p2 = p1 >>= (fn x => lift (fn y => f (x, y)) p2)
 
+    fun lift3 f p1 p2 p3 = p1 >>= (fn x => lift2 (fn (y, z) => f (x, y, z)) p2 p3)
+
     fun l *> r = l >> r
     fun l <* r = l >>= (fn x => r >> return x)
 

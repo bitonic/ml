@@ -4,7 +4,7 @@
           | fn <var> => <expr>
           | <expr> <expr>
           | let <var> = <expr> in <expr>
-          | fix <var> -> <expr>
+          | fix <var> => <expr>
  *)
 
 (* structure Language :> LANGUAGE = *)
@@ -32,6 +32,7 @@ struct
     val symbol = one_of [#"'", #"_"]
     val space = one_of [#"\t", #" ", #"\n"]
     val spaces = many space
+    fun parens p = (item #"(" >> spaces) *> p <* (spaces >> item #")")
 
     val id_p = letter >>=
                (fn c => lift (fn s => imp (c :: s))
@@ -45,9 +46,13 @@ struct
             val abs = lift2 Abs (items (exp "fn") >> spaces >> id_p)
                                 (spaces >> items (exp "=>") >> spaces >> p)
             val app = lift2 App (p <* many1 space) p
-            val compound = (item #"(" >> spaces) *> (abs ++ app) <* (spaces >> item #")")
+            val let_p = lift3 Let (items (exp "let") >> spaces >> id_p)
+                                  (spaces >> item #"=" >> spaces >> p)
+                                  (spaces >> items (exp "in") >> spaces >> p)
+            val fix = lift2 Fix (items (exp "fix") >> spaces >> id_p)
+                                (spaces >> items (exp "=>") >> spaces >> p)
         in
-            compound ++ var
+            try abs ++ try let_p ++ try fix ++ parens app ++ var ++ parens p
         end
 
     fun parse s =

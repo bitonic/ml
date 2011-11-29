@@ -10,8 +10,10 @@ sig
       | Var of id
 
     exception ParseException of string
-    exception TypeException of string
 
     val parse : string -> (expr * string) (* Raises ParseException *)
+
+    exception TypeException of string
+
     val typecheck : expr -> unit          (* Raises TypeException *)
 end

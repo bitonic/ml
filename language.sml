@@ -7,8 +7,8 @@
           | fix <var> => <expr>
  *)
 
-(* structure Language :> LANGUAGE = *)
-structure Language =
+structure Language :> LANGUAGE =
+(* structure Language = *)
 struct
     type id = string
     datatype expr
@@ -18,8 +18,10 @@ struct
       | Let of id * expr * expr
       | Fix of id * expr
 
+    (* --------------------------------------------------------------------- *)
+    (* -- Parsing ---------------------------------------------------------- *)
+
     exception ParseException of string
-    exception TypeException of string
 
     structure Parser = ParserFun (structure T = CharToken)
     open Parser
@@ -63,6 +65,50 @@ struct
                           Int.toString c ^ ": " ^ s
             in (print err; raise ParseException err)
             end
+
+    (* --------------------------------------------------------------------- *)
+    (* -- Type checking - Thanks Luca Cardelli & Tim Sheard ---------------- *)
+
+    exception TypeException of string
+
+    datatype type_exp
+      = MutVar of (type_exp option) ref
+      | GenVar of int
+      | OperType of string * type_exp list
+
+    fun prune (t as (MutVar r)) = (case !r
+                                    of NONE    => t
+                                     | SOME t2 => let val t2' = prune t2
+                                                  in  (r := SOME t2'; t2')
+                                                  end)
+      | prune t                 = t
+
+    fun occurs_in r t =
+        case prune t
+         of MutVar r2        => r = r2
+          | GenVar n         => false
+          | OperType (_, ts) => List.foldl (fn (t', b) => b orelse occurs_in r t') false ts
+
+    fun unify t1 t2 =
+        let val t1' = prune t1
+            val t2' = prune t2
+            fun unify_args [] [] = ()
+              | unify_args (x :: xs) (y :: ys) = (unify x y; unify_args xs ys)
+              | unify_args _ _ = raise TypeException "different lengths"
+        in case (t1', t2')
+            of (MutVar r1, MutVar r2) =>
+               if t1' = t2' then () else r1 := SOME t2'
+             | (MutVar r1, _) =>
+               if occurs_in r1 t2' then raise TypeException "occurs in"
+               else r1 := SOME t2
+             | (_, MutVar _) => unify t2 t1
+             | (GenVar n, GenVar m) =>
+               if n = m then () else raise TypeException "different genvars"
+             | (OperType (n1, ts1), OperType (n2, ts2)) =>
+               if n1 = n2 then unify_args ts1 ts2
+               else raise TypeException "different constructors"
+             | (_, _) => raise TypeException "different types"
+        end
 
     fun typecheck e = raise General.Fail "unimplemented"
 end

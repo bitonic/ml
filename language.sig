@@ -15,5 +15,10 @@ sig
 
     exception TypeException of string
 
-    val typecheck : expr -> unit          (* Raises TypeException *)
+    datatype type_exp
+      = MutVar of (type_exp option) ref
+      | GenVar of int
+      | OperType of string * type_exp list
+
+    val typecheck : expr -> type_exp      (* Raises TypeException *)
 end

@@ -90,24 +90,26 @@ struct
           | OperType (_, ts) => List.foldl (fn (t', b) => b orelse occurs_in r t') false ts
 
     fun unify t1 t2 =
-        let val t1' = prune t1
+        let
+            val t1' = prune t1
             val t2' = prune t2
             fun unify_args [] [] = ()
               | unify_args (x :: xs) (y :: ys) = (unify x y; unify_args xs ys)
               | unify_args _ _ = raise TypeException "different lengths"
-        in case (t1', t2')
-            of (MutVar r1, MutVar r2) =>
-               if t1' = t2' then () else r1 := SOME t2'
-             | (MutVar r1, _) =>
-               if occurs_in r1 t2' then raise TypeException "occurs in"
-               else r1 := SOME t2
-             | (_, MutVar _) => unify t2 t1
-             | (GenVar n, GenVar m) =>
-               if n = m then () else raise TypeException "different genvars"
-             | (OperType (n1, ts1), OperType (n2, ts2)) =>
-               if n1 = n2 then unify_args ts1 ts2
-               else raise TypeException "different constructors"
-             | (_, _) => raise TypeException "different types"
+        in
+            case (t1', t2')
+             of (MutVar r1, MutVar r2) =>
+                if t1' = t2' then () else r1 := SOME t2'
+              | (MutVar r1, _) =>
+                if occurs_in r1 t2' then raise TypeException "occurs in"
+                else r1 := SOME t2
+              | (_, MutVar _) => unify t2 t1
+              | (GenVar n, GenVar m) =>
+                if n = m then () else raise TypeException "different genvars"
+              | (OperType (n1, ts1), OperType (n2, ts2)) =>
+                if n1 = n2 then unify_args ts1 ts2
+                else raise TypeException "different constructors"
+              | (_, _) => raise TypeException "different types"
         end
 
     fun typecheck e = raise General.Fail "unimplemented"

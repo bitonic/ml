@@ -10,33 +10,35 @@ signature PARSER =
 sig
     datatype 'r result
       = Success of 'r
-      | Fail of string
+      | Fail of (string * (int * int))
 
     eqtype t
 
     type 'r parser
+    type 'r susp = unit -> 'r parser
 
-    val parse : 'r parser * t list -> ('r result * t list)
+    val parse : 'r susp * t list -> ('r result * t list)
 
-    val return : 'r -> 'r parser
-    val bind : 'a parser -> ('a -> 'b parser) -> 'b parser
-    val >>= : 'a parser * ('a -> 'b parser) -> 'b parser
-    val >> : 'a parser * 'b parser -> 'b parser
-    val lift : ('a -> 'b) -> 'a parser -> 'b parser
-    val lift2 : ('a * 'b -> 'c) -> 'a parser -> 'b parser -> 'c parser
-    val *> : 'a parser * 'b parser -> 'b parser
-    val <* : 'a parser * 'b parser -> 'a parser
+    val return : 'r -> 'r susp
+    val bind : 'a susp -> ('a -> 'b susp) -> 'b susp
+    val >>= : 'a susp * ('a -> 'b susp) -> 'b susp
+    val >> : 'a susp * 'b susp -> 'b susp
+    val lift : ('a -> 'b) -> 'a susp -> 'b susp
+    val lift2 : ('a * 'b -> 'c) -> 'a susp -> 'b susp -> 'c susp
+    val *> : 'a susp * 'b susp -> 'b susp
+    val <* : 'a susp * 'b susp -> 'a susp
 
-    val try : 'a parser -> 'a parser
+    val try : 'a susp -> 'a susp
 
-    val fail : string -> 'r parser
-    val plus : 'r parser -> (unit -> 'r parser) -> 'r parser
-    val ++ : 'r parser * (unit -> 'r parser) -> 'r parser
+    val fail : string -> 'r susp
+    val plus : 'r susp -> 'r susp -> 'r susp
+    val ++ : 'r susp * 'r susp -> 'r susp
 
-    val any : t parser
-    val item : t -> t parser
-    val items : t list -> (t list) parser
-    val many : 'r parser -> ('r list) parser
-    val many1 : 'r parser -> ('r list) parser
-    val one_of : t list -> t parser
+    val any : t susp
+    val eof : unit susp
+    val item : t -> t susp
+    val items : t list -> (t list) susp
+    val many : 'r susp -> ('r list) susp
+    val many1 : 'r susp -> ('r list) susp
+    val one_of : t list -> t susp
 end

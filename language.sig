@@ -12,6 +12,6 @@ sig
     exception ParseException of string
     exception TypeException of string
 
-    val parse : string -> expr   (* Raises ParseException *)
-    val typecheck : expr -> unit (* Raises TypeException *)
+    val parse : string -> (expr * string) (* Raises ParseException *)
+    val typecheck : expr -> unit          (* Raises TypeException *)
 end

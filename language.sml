@@ -67,50 +67,64 @@ struct
             end
 
     (* --------------------------------------------------------------------- *)
-    (* -- Type checking - Thanks Luca Cardelli & Tim Sheard ---------------- *)
+    (* -- Type checking ---------------------------------------------------- *)
 
     exception TypeException of string
 
-    datatype type_exp
-      = MutVar of (type_exp option) ref
-      | GenVar of int
-      | OperType of string * type_exp list
+    (* datatype type_exp *)
+    (*   = MutVar of (type_exp option) ref *)
+    (*   | GenVar of int *)
+    (*   | OperType of string * type_exp list *)
 
-    fun prune (t as (MutVar r)) = (case !r
-                                    of NONE    => t
-                                     | SOME t2 => let val t2' = prune t2
-                                                  in  (r := SOME t2'; t2')
-                                                  end)
-      | prune t                 = t
+    (* fun prune (t as (MutVar r)) = (case !r *)
+    (*                                 of NONE    => t *)
+    (*                                  | SOME t2 => let val t2' = prune t2 *)
+    (*                                               in  (r := SOME t2'; t2') *)
+    (*                                               end) *)
+    (*   | prune t                 = t *)
 
-    fun occurs_in r t =
-        case prune t
-         of MutVar r2        => r = r2
-          | GenVar n         => false
-          | OperType (_, ts) => List.foldl (fn (t', b) => b orelse occurs_in r t') false ts
+    (* fun occurs_in r t = *)
+    (*     case prune t *)
+    (*      of MutVar r2        => r = r2 *)
+    (*       | GenVar n         => false *)
+    (*       | OperType (_, ts) => List.foldl (fn (t', b) => b orelse occurs_in r t') false ts *)
 
-    fun unify t1 t2 =
-        let
-            val t1' = prune t1
-            val t2' = prune t2
-            fun unify_args [] [] = ()
-              | unify_args (x :: xs) (y :: ys) = (unify x y; unify_args xs ys)
-              | unify_args _ _ = raise TypeException "different lengths"
-        in
-            case (t1', t2')
-             of (MutVar r1, MutVar r2) =>
-                if t1' = t2' then () else r1 := SOME t2'
-              | (MutVar r1, _) =>
-                if occurs_in r1 t2' then raise TypeException "occurs in"
-                else r1 := SOME t2
-              | (_, MutVar _) => unify t2 t1
-              | (GenVar n, GenVar m) =>
-                if n = m then () else raise TypeException "different genvars"
-              | (OperType (n1, ts1), OperType (n2, ts2)) =>
-                if n1 = n2 then unify_args ts1 ts2
-                else raise TypeException "different constructors"
-              | (_, _) => raise TypeException "different types"
-        end
+    (* fun unify t1 t2 = *)
+    (*     let *)
+    (*         val t1' = prune t1 *)
+    (*         val t2' = prune t2 *)
+    (*         fun unify_args [] [] = () *)
+    (*           | unify_args (x :: xs) (y :: ys) = (unify x y; unify_args xs ys) *)
+    (*           | unify_args _ _ = raise TypeException "different lengths" *)
+    (*     in *)
+    (*         case (t1', t2') *)
+    (*          of (MutVar r1, MutVar r2) => *)
+    (*             if t1' = t2' then () else r1 := SOME t2' *)
+    (*           | (MutVar r1, _) => *)
+    (*             if occurs_in r1 t2' then raise TypeException "occurs in" *)
+    (*             else r1 := SOME t2 *)
+    (*           | (_, MutVar _) => unify t2 t1 *)
+    (*           | (GenVar n, GenVar m) => *)
+    (*             if n = m then () else raise TypeException "different genvars" *)
+    (*           | (OperType (n1, ts1), OperType (n2, ts2)) => *)
+    (*             if n1 = n2 then unify_args ts1 ts2 *)
+    (*             else raise TypeException "different constructors" *)
+    (*           | (_, _) => raise TypeException "different types" *)
+    (*     end *)
 
-    fun typecheck e = raise General.Fail "unimplemented"
+    (* fun instantiate ts x = case x *)
+    (*                         of MutVar _ => x *)
+    (*                          | OperType (nm, xs) => *)
+    (*                            OperType (nm, List.map (instantiate ts) xs) *)
+    (*                          | GenVar n => List.nth (ts, n) *)
+
+    structure Map = TSTFun (structure K =
+                            struct
+                                type t = char
+                                fun leq (x : char) (y : char) = x <= y
+                            end)
+
+    fun reconstruct t m = raise General.Fail ""
+
+    fun typecheck e = reconstruct e Map.empty
 end

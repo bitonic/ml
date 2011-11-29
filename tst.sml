@@ -29,7 +29,14 @@ struct
         else if K.leq c1 c2 then Branch (c2, insert (c1 :: s) v l, m, r)
         else Branch (c2, l, m, insert (c1 :: s) v r)
 
-    fun lookup k t = raise Fail "unimplemented"
+    fun lookup _         Null                   = NONE
+      | lookup []        (End (v, _))           = SOME v
+      | lookup []        (Branch (_, l, _, _))  = lookup [] l
+      | lookup s         (End (_, t))           = lookup s t
+      | lookup (c1 :: s) (Branch (c2, l, m, r)) =
+        if c1 = c2 then lookup s m
+        else if K.leq c1 c2 then lookup (c1 :: s) l
+        else lookup (c1 :: s) r
 
     fun delete k t = raise Fail "unimplemented"
 

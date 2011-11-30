@@ -18,7 +18,6 @@ sig
     datatype type_exp
       = TyVar of int
       | TyArr of type_exp * type_exp
-      (* TyGen should appear only in type schemes. *)
       | TyScheme of int * type_exp
       | TyGen of int
 

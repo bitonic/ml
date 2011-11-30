@@ -84,6 +84,11 @@ struct
     fun intersect l1 l2 =
         List.filter (fn x => not (List.exists (fn y => x = y) l2)) l1
 
+    (*
+     * Applies the substitution to a type.
+     * We do not need to worry about quantified type because they are treated
+     * differently (TyGen).
+     *)
     fun apply sub (TyVar tv)        = (case lookup tv sub
                                         of SOME t => t
                                          | NONE   => TyVar tv)
@@ -91,11 +96,13 @@ struct
       | apply sub (TyScheme (n, t)) = TyScheme (n, apply sub t)
       | apply _   t                 = t
 
+    (* Applies the substitution to all the types in a context. *)
     fun applyctx sub = List.map (fn (tv, t) => (tv, apply sub t))
 
     infix 9 @@
     fun s1 @@ s2 = List.map (fn (tv, t) => (tv, apply s1 t)) s2 @ s1
 
+    (* Gets all the free variables in a type *)
     fun fv (TyVar u)         = [u]
       | fv (TyArr (t1, t2))  = fv t1 @ fv t2
       | fv (TyScheme (_, t)) = fv t
@@ -103,12 +110,20 @@ struct
 
     fun fvctx ctx = List.concat (List.map (fn (_, t) => fv t) ctx)
 
+    (*
+     * Binds a variable to a type.
+     * Checks that that type doesn't contain the variable.
+     *)
     fun var_bind tv t =
         if t = TyVar tv then []
         else if List.exists (fn x => x = tv) (fv t) then
             raise TypeException "occurs check fails"
         else [(tv, t)]
 
+    (*
+     * Unifies two types, returning the substitution that will make them
+     * equal.
+     *)
     fun unify (TyArr (l1, r1)) (TyArr (l2, r2)) =
         let val s1 = unify l1 l2
             val s2 = unify (apply s1 r1) (apply s1 r2)
@@ -118,6 +133,7 @@ struct
       | unify t          (TyVar tv) = var_bind tv t
       | unify _          _          = raise TypeException "types do not unify"
 
+    (* Quantifies all the type variables in the provided list. *)
     fun quantify tvs qt =
         let val tvs' = List.filter (fn tv => List.exists (fn x => x = tv) tvs) (fv qt)
             val len  = List.length tvs'
@@ -125,9 +141,12 @@ struct
         in TyScheme (len, apply s qt)
         end
 
+    (*
+     * Type checks a term. Returns the inferred type.
+     * If the program is not typeable, raises a TypeException.
+     *)
     fun typecheck t =
-        let
-            val counter = ref ~1
+        let val counter = ref ~1
             fun fresh () = (counter := !counter + 1; TyVar (!counter))
 
             fun freshen (TyScheme (n, t)) =
@@ -169,7 +188,6 @@ struct
                     val s2      = unify (apply s1 ty) a
                 in  (s2 @@ s1, apply s2 a)
                 end
-        in
-            #2 (f [] t) handle TypeException s => (print s; raise TypeException s)
+        in #2 (f [] t) handle TypeException s => (print s; raise TypeException s)
         end
 end

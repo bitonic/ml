@@ -77,61 +77,52 @@ struct
       | TyScheme of int * type_exp
       | TyGen of int
 
-    infix 9 +->
-    fun u +-> t = [(u, t)]
-
     fun lookup x l = case List.find (fn (y, _) => x = y) l
                       of SOME (_, el) => SOME el
                        | NONE         => NONE
 
-    fun intersect l r =
-        List.filter (fn x => not (List.exists (fn y => x = y) r)) l
+    fun intersect l1 l2 =
+        List.filter (fn x => not (List.exists (fn y => x = y) l2)) l1
 
-    fun tmap f (TyArr (l, r)) = TyArr (tmap f l, tmap f r)
-      | tmap f (TyScheme (i, t)) = TyScheme (i, tmap f t)
-      | tmap f t = f t
+    fun apply sub (TyVar tv)        = (case lookup tv sub
+                                        of SOME t => t
+                                         | NONE   => TyVar tv)
+      | apply sub (TyArr (t1, t2))  = TyArr (apply sub t1, apply sub t2)
+      | apply sub (TyScheme (n, t)) = TyScheme (n, apply sub t)
+      | apply _   t                 = t
 
-    fun apply sub (TyVar u) = (case lookup u sub
-                                of SOME t => t
-                                 | NONE   => TyVar u)
-      | apply sub (TyArr (l, r)) = TyArr (apply sub l, apply sub r)
-      | apply sub (TyScheme (i, t)) = TyScheme (i, apply sub t)
-      | apply _ t = t
-
-    fun applyctx sub = List.map (fn (v, t) => (v, apply sub t))
+    fun applyctx sub = List.map (fn (tv, t) => (tv, apply sub t))
 
     infix 9 @@
-    fun s1 @@ s2 = List.map (fn (u, t) => (u, apply s1 t)) s2 @ s1
+    fun s1 @@ s2 = List.map (fn (tv, t) => (tv, apply s1 t)) s2 @ s1
 
-    fun fv (TyVar u) = [u]
-      | fv (TyArr (l, r)) = fv l @ fv r
+    fun fv (TyVar u)         = [u]
+      | fv (TyArr (t1, t2))  = fv t1 @ fv t2
       | fv (TyScheme (_, t)) = fv t
-      | fv t = []
+      | fv t                 = []
 
     fun fvctx ctx = List.concat (List.map (fn (_, t) => fv t) ctx)
 
-    fun var_bind u t =
-        if t = TyVar u then
-            []
-        else if List.exists (fn x => x = u) (fv t) then
+    fun var_bind tv t =
+        if t = TyVar tv then []
+        else if List.exists (fn x => x = tv) (fv t) then
             raise TypeException "occurs check fails"
-        else
-            u +-> t
+        else [(tv, t)]
 
-    fun mgu (TyArr (l1, r1)) (TyArr (l2, r2)) =
-        let val s1 = mgu l1 l2
-            val s2 = mgu (apply s1 r1) (apply s1 r2)
+    fun unify (TyArr (l1, r1)) (TyArr (l2, r2)) =
+        let val s1 = unify l1 l2
+            val s2 = unify (apply s1 r1) (apply s1 r2)
         in  s2 @@ s1
         end
-      | mgu (TyVar u) t = var_bind u t
-      | mgu t (TyVar u) = var_bind u t
-      | mgu _ _ = raise TypeException "types do not unify"
+      | unify (TyVar tv) t          = var_bind tv t
+      | unify t          (TyVar tv) = var_bind tv t
+      | unify _          _          = raise TypeException "types do not unify"
 
-    fun quantify vs qt =
-        let val vs' = List.filter (fn v => List.exists (fn x => x = v) vs) (fv qt)
-            val l   = List.length vs'
-            val s   = List.tabulate (l, (fn i => (List.nth (vs', i), TyGen i)))
-        in TyScheme (l, apply s qt)
+    fun quantify tvs qt =
+        let val tvs' = List.filter (fn tv => List.exists (fn x => x = tv) tvs) (fv qt)
+            val len  = List.length tvs'
+            val s    = List.tabulate (len, (fn i => (List.nth (tvs', i), TyGen i)))
+        in TyScheme (len, apply s qt)
         end
 
     fun typecheck t =
@@ -141,26 +132,29 @@ struct
 
             fun freshen (TyScheme (n, t)) =
                 let val s = List.tabulate (n, (fn i => (i, fresh ())))
-                in  apply s t
+                in apply s t
                 end
               | freshen t = t
 
             fun f ctx (Var v) =
                 (case lookup v ctx
-                  of NONE   => raise TypeException "unbound variable"
+                  of NONE   => raise TypeException ("unbound variable " ^ v)
                    | SOME t => ([], freshen t))
+
               | f ctx (Abs (v, t)) =
-                let val ty = fresh ()
+                let val ty      = fresh ()
                     val (s1, a) = f ((v, ty) :: ctx) t
                 in  (s1, apply s1 (TyArr (ty, a)))
                 end
+
               | f ctx (App (e1, e2)) =
-                let val ty = fresh ()
+                let val ty      = fresh ()
                     val (s1, a) = f ctx e1
                     val (s2, b) = f (applyctx s1 ctx) e2
-                    val s3 = mgu (apply s2 a) (TyArr (b, ty))
+                    val s3      = unify (apply s2 a) (TyArr (b, ty))
                 in (s3 @@ s2 @@ s1, apply s3 ty)
                 end
+
               | f ctx (Let (v, e1, e2)) =
                 let val (s1, a) = f ctx e1
                     val ctx'    = applyctx s1 ctx
@@ -168,12 +162,14 @@ struct
                     val (s2, b) = f ((v, a') :: ctx') e2
                 in  (s2 @@ s1, b)
                 end
+
               | f ctx (Fix (v, e)) =
-                let val ty = fresh ()
+                let val ty      = fresh ()
                     val (s1, a) = f ((v, ty) :: ctx) e
-                    val s2      = mgu (apply s1 ty) a
+                    val s2      = unify (apply s1 ty) a
                 in  (s2 @@ s1, apply s2 a)
                 end
-        in #2 (f [] t)
+        in
+            #2 (f [] t) handle TypeException s => (print s; raise TypeException s)
         end
 end

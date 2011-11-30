@@ -16,9 +16,11 @@ sig
     exception TypeException of string
 
     datatype type_exp
-      = MutVar of (type_exp option) ref
-      | GenVar of int
-      | OperType of string * type_exp list
+      = TyVar of int
+      | TyArr of type_exp * type_exp
+      (* TyGen should appear only in type schemes. *)
+      | TyScheme of int * type_exp
+      | TyGen of int
 
     val typecheck : expr -> type_exp      (* Raises TypeException *)
 end

@@ -1,73 +1,6 @@
 
-(*
- <expr> ::= <var>
-          | fn <var> => <expr>
-          | <expr> <expr>
-          | let <var> = <expr> in <expr>
-          | fix <var> => <expr>
- *)
-
-structure Language :> LANGUAGE =
-(* structure Language = *)
+structure Typecheck :> TYPECHECK =
 struct
-    type id = string
-    datatype expr
-      = Var of id
-      | Abs of string * expr
-      | App of expr * expr
-      | Let of id * expr * expr
-      | Fix of id * expr
-
-    (* --------------------------------------------------------------------- *)
-    (* -- Parsing ---------------------------------------------------------- *)
-
-    exception ParseException of string
-
-    structure Parser = ParserFun (structure T = CharToken)
-    open Parser
-
-    val exp = String.explode
-    val imp = String.implode
-
-    val letter = one_of (exp "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-    val digit = one_of (exp "0123456789")
-    val symbol = one_of [#"'", #"_"]
-    val space = one_of [#"\t", #" ", #"\n"]
-    val spaces = many space
-    fun parens p = (item #"(" >> spaces) *> p <* (spaces >> item #")")
-
-    val id_p = letter >>=
-               (fn c => lift (fn s => imp (c :: s))
-                             (many (letter ++ digit ++ symbol)))
-
-    fun parser () =
-        let
-            fun p () = parser () ()
-            val var = lift Var id_p
-            val abs = lift2 Abs (items (exp "fn") >> spaces >> id_p)
-                                (spaces >> items (exp "=>") >> spaces >> p)
-            val app = lift2 App (p <* many1 space) p
-            val let_p = lift3 Let (items (exp "let") >> spaces >> id_p)
-                                  (spaces >> item #"=" >> spaces >> p)
-                                  (spaces >> items (exp "in") >> spaces >> p)
-            val fix = lift2 Fix (items (exp "fix") >> spaces >> id_p)
-                                (spaces >> items (exp "=>") >> spaces >> p)
-        in
-            try abs ++ try let_p ++ try fix ++ parens app ++ var ++ parens p
-        end
-
-    fun parse s =
-        case Parser.parse (parser (), exp s)
-         of (Success e, s)        => (e, imp s)
-          | (Fail (s, (c, l)), _) =>
-            let val err = "Parsing failed at " ^ Int.toString l ^ "." ^
-                          Int.toString c ^ ": " ^ s
-            in (print err; raise ParseException err)
-            end
-
-    (* --------------------------------------------------------------------- *)
-    (* -- Type checking ---------------------------------------------------- *)
-
     exception TypeException of string
 
     datatype type_exp
@@ -77,12 +10,17 @@ struct
       | TyScheme of int * type_exp
       | TyGen of int
 
+    val arr_con = "(->)"
+    val int_con = "int"
+
     fun lookup x l = case List.find (fn (y, _) => x = y) l
                       of SOME (_, el) => SOME el
                        | NONE         => NONE
 
     fun intersect l1 l2 =
         List.filter (fn x => not (List.exists (fn y => x = y) l2)) l1
+
+    open Parser
 
     (*
      * Applies the substitution to a type.
@@ -169,14 +107,14 @@ struct
               | f ctx (Abs (v, t)) =
                 let val ty      = fresh ()
                     val (s1, a) = f ((v, ty) :: ctx) t
-                in  (s1, apply s1 (TyCon ("(->)", [ty, a])))
+                in  (s1, apply s1 (TyCon (arr_con, [ty, a])))
                 end
 
               | f ctx (App (e1, e2)) =
                 let val ty      = fresh ()
                     val (s1, a) = f ctx e1
                     val (s2, b) = f (applyctx s1 ctx) e2
-                    val s3      = unify (apply s2 a) (TyCon ("(->)", [b, ty]))
+                    val s3      = unify (apply s2 a) (TyCon (arr_con, [b, ty]))
                 in (s3 @@ s2 @@ s1, apply s3 ty)
                 end
 

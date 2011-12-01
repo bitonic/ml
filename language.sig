@@ -17,9 +17,10 @@ sig
 
     datatype type_exp
       = TyVar of int
-      | TyArr of type_exp * type_exp
+      | TyCon of string * type_exp list
       | TyScheme of int * type_exp
       | TyGen of int
 
     val typecheck : expr -> type_exp      (* Raises TypeException *)
+    val pretty_type : type_exp -> string
 end

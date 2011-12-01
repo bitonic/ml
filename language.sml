@@ -72,7 +72,7 @@ struct
 
     datatype type_exp
       = TyVar of int
-      | TyArr of type_exp * type_exp
+      | TyCon of string * type_exp list
       (* TyGen should appear only in type schemes. *)
       | TyScheme of int * type_exp
       | TyGen of int
@@ -92,7 +92,7 @@ struct
     fun apply sub (TyVar tv)        = (case lookup tv sub
                                         of SOME t => t
                                          | NONE   => TyVar tv)
-      | apply sub (TyArr (t1, t2))  = TyArr (apply sub t1, apply sub t2)
+      | apply sub (TyCon (con, ts)) = TyCon (con, List.map (apply sub) ts)
       | apply sub (TyScheme (n, t)) = TyScheme (n, apply sub t)
       | apply _   t                 = t
 
@@ -104,7 +104,7 @@ struct
 
     (* Gets all the free variables in a type *)
     fun fv (TyVar u)         = [u]
-      | fv (TyArr (t1, t2))  = fv t1 @ fv t2
+      | fv (TyCon (_, ts))   = List.concat (List.map fv ts)
       | fv (TyScheme (_, t)) = fv t
       | fv t                 = []
 
@@ -124,10 +124,16 @@ struct
      * Unifies two types, returning the substitution that will make them
      * equal.
      *)
-    fun unify (TyArr (l1, r1)) (TyArr (l2, r2)) =
-        let val s1 = unify l1 l2
-            val s2 = unify (apply s1 r1) (apply s1 r2)
-        in  s2 @@ s1
+    fun unify (TyCon (con1, ts1)) (TyCon (con2, ts2)) =
+        let fun zip [] [] = []
+              | zip (x :: xs) (y :: ys) = (x, y) :: zip xs ys
+              | zip _ _ = raise TypeException "different kinds"
+            val tss = zip ts1 ts2
+        in
+            if con1 <> con2 then
+                raise TypeException "different constructors"
+            else
+                List.foldr (fn ((t1, t2), s) => unify (apply s t1) (apply s t2) @@ s) [] tss
         end
       | unify (TyVar tv) t          = var_bind tv t
       | unify t          (TyVar tv) = var_bind tv t
@@ -163,14 +169,14 @@ struct
               | f ctx (Abs (v, t)) =
                 let val ty      = fresh ()
                     val (s1, a) = f ((v, ty) :: ctx) t
-                in  (s1, apply s1 (TyArr (ty, a)))
+                in  (s1, apply s1 (TyCon ("(->)", [ty, a])))
                 end
 
               | f ctx (App (e1, e2)) =
                 let val ty      = fresh ()
                     val (s1, a) = f ctx e1
                     val (s2, b) = f (applyctx s1 ctx) e2
-                    val s3      = unify (apply s2 a) (TyArr (b, ty))
+                    val s3      = unify (apply s2 a) (TyCon ("(->)", [b, ty]))
                 in (s3 @@ s2 @@ s1, apply s3 ty)
                 end
 
@@ -190,4 +196,15 @@ struct
                 end
         in #2 (f [] t) handle TypeException s => (print s; raise TypeException s)
         end
+
+    fun pretty_type (TyVar i) = Int.toString i
+      | pretty_type (TyCon (con, ts)) =
+        let fun pop o' l r = pretty_type l ^ " " ^ o' ^ " " ^ pretty_type r
+            val o' = String.substring (con, 1, (String.size con - 2))
+        in if String.substring (con, 0, 1) = "(" then
+               "(" ^ pop o' (List.nth (ts, 0)) (List.nth (ts, 1)) ^ ")"
+           else
+               "(" ^ List.foldr (fn (t, s) => s ^ " " ^ pretty_type t) con ts ^ ")"
+        end
+      | pretty_type _ = raise General.Fail ""
 end

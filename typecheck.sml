@@ -145,10 +145,12 @@ struct
       | pretty_type (TyCon (con, ts)) =
         let fun pop o' l r = pretty_type l ^ " " ^ o' ^ " " ^ pretty_type r
             val o' = String.substring (con, 1, (String.size con - 2))
+            fun par ts x = if List.length ts > 0 then "(" ^ x ^ ")"
+                           else x
         in if String.substring (con, 0, 1) = "(" then
-               "(" ^ pop o' (List.nth (ts, 0)) (List.nth (ts, 1)) ^ ")"
+               par ts (pop o' (List.nth (ts, 0)) (List.nth (ts, 1)))
            else
-               "(" ^ List.foldr (fn (t, s) => s ^ " " ^ pretty_type t) con ts ^ ")"
+               par ts (List.foldr (fn (t, s) => s ^ " " ^ pretty_type t) con ts)
         end
       | pretty_type _ = raise General.Fail ""
 end

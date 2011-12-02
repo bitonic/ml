@@ -85,6 +85,10 @@ struct
         in TyScheme (len, apply s qt)
         end
 
+    val base_context =
+        [ ("plus", TyCon (arr_con, [TyCon (int_con, []), TyCon (arr_con, [TyCon (int_con, []), TyCon (int_con, [])])]))
+        , ("negate", TyCon (arr_con, [TyCon (int_con, []), TyCon (int_con, [])]))
+        ]
     (*
      * Type checks a term. Returns the inferred type.
      * If the program is not typeable, raises a TypeException.
@@ -132,7 +136,9 @@ struct
                     val s2      = unify (apply s1 ty) a
                 in  (s2 @@ s1, apply s2 a)
                 end
-        in #2 (f [] t) handle TypeException s => (print s; raise TypeException s)
+              | f ctx (IntLit i) = ([], TyCon (int_con, []))
+
+        in #2 (f base_context t) handle TypeException s => (print s; raise TypeException s)
         end
 
     fun pretty_type (TyVar i) = Int.toString i

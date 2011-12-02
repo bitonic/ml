@@ -2,14 +2,18 @@
 signature PARSER =
 sig
     type id = string
+
     datatype expr
-      = Abs of string * expr
+      = Var of id
+      | Abs of string * expr
       | App of expr * expr
-      | Fix of id * expr
       | Let of id * expr * expr
-      | Var of id
+      | Fix of id * expr
+      | IntLit of int
 
     exception ParseException of string
 
-    val parse : string -> (expr * string) (* Raises ParseException *)
+    val parse : string -> expr (* Raises ParseException *)
+    val pretty_expr : expr -> string
 end
+

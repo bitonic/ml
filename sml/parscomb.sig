@@ -12,12 +12,13 @@ sig
       = Success of 'r
       | Fail of (string * (int * int))
 
+    eqtype s
     eqtype t
 
     type 'r parser
     type 'r susp = unit -> 'r parser
 
-    val parse : 'r susp * t list -> ('r result * t list)
+    val parse : 'r susp * s -> ('r result * s)
 
     val return : 'r -> 'r susp
     val bind : 'a susp -> ('a -> 'b susp) -> 'b susp
@@ -37,9 +38,9 @@ sig
 
     val any : t susp
     val eof : unit susp
-    val item : t -> t susp
-    val items : t list -> (t list) susp
+    val match : s -> s susp
+    val matchT : t -> t susp
     val many : 'r susp -> ('r list) susp
     val many1 : 'r susp -> ('r list) susp
-    val one_of : t list -> t susp
+    val oneOf : t list -> t susp
 end

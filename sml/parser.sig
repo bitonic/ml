@@ -14,6 +14,6 @@ sig
     exception ParseException of string
 
     val parse : string -> expr (* Raises ParseException *)
-    val pretty_expr : expr -> string
+    val prettyExpr : expr -> string
 end
 

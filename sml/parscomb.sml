@@ -1,14 +1,15 @@
 
-functor ParsCombFun (structure T : TOKEN) :> PARSCOMB where type t = T.t =
+functor ParsCombFun (structure S : STREAM) :>
+        PARSCOMB where type s = S.s and type t = S.t =
 struct
     datatype 'r result
       = Success of 'r
-      | Fail of string * T.pos
+      | Fail of string * S.pos
 
-    type t = T.t
+    type s = S.s
+    type t = S.t
 
-    type stream = T.t list
-    type state = T.pos * stream
+    type state = S.pos * s
     type 'r parser = state -> ('r result * state)
     type 'r susp = unit -> 'r parser
 
@@ -44,28 +45,35 @@ struct
                           | _              => r () s
     fun l ++ r = plus l r
 
-    fun any () (pos, [])       = (Fail ("Parsec.any: no input", pos), (pos, []))
-      | any () (pos, x :: inp) = (Success x, (T.move (x, pos), inp))
+    fun any () (pos, inp) =
+        case S.uncons inp
+         of SOME (t, inp') => (Success t, (S.move t pos, inp'))
+          | NONE           => (Fail ("Parsec.any: no input", pos), (pos, inp))
 
-    fun eof () (pos, []) = (Success (), (pos, []))
-      | eof () s         = fail "Parsec.eof: input remaining" () s
+    fun eof () (pos, inp) =
+        case S.uncons inp
+         of NONE   => (Success (), (pos, inp))
+          | SOME _ => (Fail ("Parsec.eof: input remaining", pos), (pos, inp))
 
-    fun item x =
-        let fun check y = if x = y then return x
-                          else fail ("Parsec.item: received " ^ T.to_string y ^
-                                     ", expecting " ^ T.to_string x ^ ".")
+    fun matchT x =
+        let val ttostr = S.toString o S.toStream
+            fun check y = if x = y then return x
+                          else fail ("Parsec.item: received " ^ ttostr y ^
+                                     ", expecting " ^ ttostr x ^ ".")
         in any >>= check
         end
 
-    fun items []        = return []
-      | items (x :: xs) = (item x) >> lift (fn _ => x :: xs) (items xs)
+    fun match s =
+        case S.uncons s
+         of NONE         => return s
+          | SOME (t, s') => matchT t >> lift (fn _ => s) (match s')
 
     fun many p = (try p >>= (fn x => lift (fn xs => x :: xs) (many p))) ++ return []
 
     fun many1 p = p >>= (fn x => lift (fn xs => x :: xs) (many p))
 
-    fun one_of ps =
-        let fun f (x, sum) = sum ++ item x
-        in List.foldr f (fail "Parser.one_of: No items") ps
+    fun oneOf ps =
+        let fun f (x, sum) = sum ++ matchT x
+        in List.foldr f (fail "Parser.oneOf: No items") ps
         end
 end

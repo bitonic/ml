@@ -9,7 +9,7 @@ sig
       | TyScheme of int * type_exp
       | TyGen of int
 
-    val base_context : (string * type_exp) list
+    val baseContext : (string * type_exp) list
     val typecheck : Parser.expr -> type_exp (* Raises TypeException *)
-    val pretty_type : type_exp -> string
+    val prettyType : type_exp -> string
 end

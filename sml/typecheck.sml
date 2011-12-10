@@ -10,8 +10,8 @@ struct
       | TyScheme of int * type_exp
       | TyGen of int
 
-    val arr_con = "(->)"
-    val int_con = "int"
+    val arrCon = "(->)"
+    val intCon = "int"
 
     fun lookup x l = case List.find (fn (y, _) => x = y) l
                       of SOME (_, el) => SOME el
@@ -85,9 +85,9 @@ struct
         in TyScheme (len, apply s qt)
         end
 
-    val base_context =
-        [ ("plus", TyCon (arr_con, [TyCon (int_con, []), TyCon (arr_con, [TyCon (int_con, []), TyCon (int_con, [])])]))
-        , ("negate", TyCon (arr_con, [TyCon (int_con, []), TyCon (int_con, [])]))
+    val baseContext =
+        [ ("plus", TyCon (arrCon, [TyCon (intCon, []), TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])])]))
+        , ("negate", TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])]))
         ]
     (*
      * Type checks a term. Returns the inferred type.
@@ -111,14 +111,14 @@ struct
               | f ctx (Abs (v, t)) =
                 let val ty      = fresh ()
                     val (s1, a) = f ((v, ty) :: ctx) t
-                in  (s1, apply s1 (TyCon (arr_con, [ty, a])))
+                in  (s1, apply s1 (TyCon (arrCon, [ty, a])))
                 end
 
               | f ctx (App (e1, e2)) =
                 let val ty      = fresh ()
                     val (s1, a) = f ctx e1
                     val (s2, b) = f (applyctx s1 ctx) e2
-                    val s3      = unify (apply s2 a) (TyCon (arr_con, [b, ty]))
+                    val s3      = unify (apply s2 a) (TyCon (arrCon, [b, ty]))
                 in (s3 @@ s2 @@ s1, apply s3 ty)
                 end
 
@@ -136,21 +136,21 @@ struct
                     val s2      = unify (apply s1 ty) a
                 in  (s2 @@ s1, apply s2 a)
                 end
-              | f ctx (IntLit i) = ([], TyCon (int_con, []))
+              | f ctx (IntLit i) = ([], TyCon (intCon, []))
 
-        in #2 (f base_context t) handle TypeException s => (print s; raise TypeException s)
+        in #2 (f baseContext t) handle TypeException s => (print s; raise TypeException s)
         end
 
-    fun pretty_type (TyVar i) = Int.toString i
-      | pretty_type (TyCon (con, ts)) =
-        let fun pop o' l r = pretty_type l ^ " " ^ o' ^ " " ^ pretty_type r
+    fun prettyType (TyVar i) = Int.toString i
+      | prettyType (TyCon (con, ts)) =
+        let fun pop o' l r = prettyType l ^ " " ^ o' ^ " " ^ prettyType r
             val o' = String.substring (con, 1, (String.size con - 2))
             fun par ts x = if List.length ts > 0 then "(" ^ x ^ ")"
                            else x
         in if String.substring (con, 0, 1) = "(" then
                par ts (pop o' (List.nth (ts, 0)) (List.nth (ts, 1)))
            else
-               par ts (List.foldr (fn (t, s) => s ^ " " ^ pretty_type t) con ts)
+               par ts (List.foldr (fn (t, s) => s ^ " " ^ prettyType t) con ts)
         end
-      | pretty_type _ = raise General.Fail ""
+      | prettyType _ = raise General.Fail ""
 end

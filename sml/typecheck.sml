@@ -23,6 +23,7 @@ struct
 
     val arrCon = ConOp "->"
     val intCon = Con "Int"
+    val realCon = Con "Real"
 
     fun lookup x l = case L.find (fn (y, _) => x = y) l
                       of SOME (_, el) => SOME el
@@ -151,15 +152,17 @@ struct
                     val s2      = unify (apply s1 ty) a
                 in  (s2 @@ s1, apply s2 a)
                 end
-              | f ctx (IntLit i) = ([], TyCon (intCon, []))
+              | f ctx (Literal l) = fLit ctx l
 
-            and fLit ctx (IntLIt i) = ([], TyCon (intCon, []))
-              | fLit ctx (RealLit r) = ([], TyCon (realLit, []))
+            and fLit ctx (IntLit i) = ([], TyCon (intCon, []))
+              | fLit ctx (RealLit r) = ([], TyCon (realCon, []))
               | fLit ctx (TupleLit es) =
-                let val ts = L.foldr (fn (e, s1) => let (s2, a) = f (applyctx s1 ctx) e
-                                                    in s2 @@ s1
-                                                    end) [] es
-                in  ([], TyCon (tupleCon (L.length es), ts))
+                let val ts = L.foldr
+                             (fn (e, (s1, l)) => let val (s2, a) = f (applyctx s1 ctx) e
+                                                 in (s2 @@ s1, l @ [a])
+                                                 end) ([], []) es
+                in  (#1 ts, TyCon (ConTuple (L.length es), #2 ts))
+                end
         in #2 (f ctx t) handle TypeException s => (print s; raise TypeException s)
         end
 

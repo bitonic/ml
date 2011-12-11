@@ -111,5 +111,5 @@ struct
       | prettyExpr (Literal i) = prettyLit i
     and prettyLit (IntLit i) = Int.toString i
       | prettyLit (RealLit r) = Real.toString r
-      | prettyLit (TupleLit t) = S.concat (["("] @ L.intersperse "," (L.map prettyExpr t) @ [")"])
+      | prettyLit (TupleLit t) = S.concat (["("] @ U.intersperse "," (L.map prettyExpr t) @ [")"])
 end

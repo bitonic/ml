@@ -3,13 +3,15 @@ signature TYPECHECK =
 sig
     exception TypeException of string
 
-    datatype type_exp
+    datatype typeExp
       = TyVar of int
-      | TyCon of string * type_exp list
-      | TyScheme of int * type_exp
+      | TyCon of string * typeExp list
+      | TyScheme of int * typeExp
       | TyGen of int
 
-    val baseContext : (string * type_exp) list
-    val typecheck : Parser.expr -> type_exp (* Raises TypeException *)
-    val prettyType : type_exp -> string
+    type fileTypes = (Parser.id * typeExp) list
+
+    val baseContext : (string * typeExp) list
+    val typecheck : Parser.file -> fileTypes (* Raises TypeException *)
+    val prettyType : typeExp -> string
 end

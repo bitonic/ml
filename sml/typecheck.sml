@@ -3,22 +3,26 @@ structure Typecheck :> TYPECHECK =
 struct
     exception TypeException of string
 
-    datatype type_exp
+    datatype typeExp
       = TyVar of int
-      | TyCon of string * type_exp list
+      | TyCon of string * typeExp list
       (* TyGen should appear only in type schemes. *)
-      | TyScheme of int * type_exp
+      | TyScheme of int * typeExp
       | TyGen of int
+
+    type fileTypes = (Parser.id * typeExp) list
+
+    structure L = List
 
     val arrCon = "(->)"
     val intCon = "int"
 
-    fun lookup x l = case List.find (fn (y, _) => x = y) l
+    fun lookup x l = case L.find (fn (y, _) => x = y) l
                       of SOME (_, el) => SOME el
                        | NONE         => NONE
 
     fun intersect l1 l2 =
-        List.filter (fn x => not (List.exists (fn y => x = y) l2)) l1
+        L.filter (fn x => not (L.exists (fn y => x = y) l2)) l1
 
     open Parser
 
@@ -30,23 +34,23 @@ struct
     fun apply sub (TyVar tv)        = (case lookup tv sub
                                         of SOME t => t
                                          | NONE   => TyVar tv)
-      | apply sub (TyCon (con, ts)) = TyCon (con, List.map (apply sub) ts)
+      | apply sub (TyCon (con, ts)) = TyCon (con, L.map (apply sub) ts)
       | apply sub (TyScheme (n, t)) = TyScheme (n, apply sub t)
       | apply _   t                 = t
 
     (* Applies the substitution to all the types in a context. *)
-    fun applyctx sub = List.map (fn (tv, t) => (tv, apply sub t))
+    fun applyctx sub = L.map (fn (tv, t) => (tv, apply sub t))
 
     infix 9 @@
-    fun s1 @@ s2 = List.map (fn (tv, t) => (tv, apply s1 t)) s2 @ s1
+    fun s1 @@ s2 = L.map (fn (tv, t) => (tv, apply s1 t)) s2 @ s1
 
     (* Gets all the free variables in a type *)
     fun fv (TyVar u)         = [u]
-      | fv (TyCon (_, ts))   = List.concat (List.map fv ts)
+      | fv (TyCon (_, ts))   = L.concat (L.map fv ts)
       | fv (TyScheme (_, t)) = fv t
       | fv t                 = []
 
-    fun fvctx ctx = List.concat (List.map (fn (_, t) => fv t) ctx)
+    fun fvctx ctx = L.concat (L.map (fn (_, t) => fv t) ctx)
 
     (*
      * Binds a variable to a type.
@@ -54,7 +58,7 @@ struct
      *)
     fun var_bind tv t =
         if t = TyVar tv then []
-        else if List.exists (fn x => x = tv) (fv t) then
+        else if L.exists (fn x => x = tv) (fv t) then
             raise TypeException "occurs check fails"
         else [(tv, t)]
 
@@ -71,7 +75,7 @@ struct
             if con1 <> con2 then
                 raise TypeException "different constructors"
             else
-                List.foldr (fn ((t1, t2), s) => unify (apply s t1) (apply s t2) @@ s) [] tss
+                L.foldr (fn ((t1, t2), s) => unify (apply s t1) (apply s t2) @@ s) [] tss
         end
       | unify (TyVar tv) t          = var_bind tv t
       | unify t          (TyVar tv) = var_bind tv t
@@ -79,9 +83,9 @@ struct
 
     (* Quantifies all the type variables in the provided list. *)
     fun quantify tvs qt =
-        let val tvs' = List.filter (fn tv => List.exists (fn x => x = tv) tvs) (fv qt)
-            val len  = List.length tvs'
-            val s    = List.tabulate (len, (fn i => (List.nth (tvs', i), TyGen i)))
+        let val tvs' = L.filter (fn tv => L.exists (fn x => x = tv) tvs) (fv qt)
+            val len  = L.length tvs'
+            val s    = L.tabulate (len, (fn i => (L.nth (tvs', i), TyGen i)))
         in TyScheme (len, apply s qt)
         end
 
@@ -97,12 +101,12 @@ struct
      * Type checks a term. Returns the inferred type.
      * If the program is not typeable, raises a TypeException.
      *)
-    fun typecheck t =
+    fun typecheckT ctx t =
         let val counter = ref ~1
             fun fresh () = (counter := !counter + 1; TyVar (!counter))
 
             fun freshen (TyScheme (n, t)) =
-                let val s = List.tabulate (n, (fn i => (i, fresh ())))
+                let val s = L.tabulate (n, (fn i => (i, fresh ())))
                 in apply s t
                 end
               | freshen t = t
@@ -142,19 +146,22 @@ struct
                 end
               | f ctx (IntLit i) = ([], TyCon (intCon, []))
 
-        in #2 (f baseContext t) handle TypeException s => (print s; raise TypeException s)
+        in #2 (f ctx t) handle TypeException s => (print s; raise TypeException s)
         end
+
+    fun typecheck l =
+        L.rev (L.foldr (fn ((v, e), ctx) => (v, typecheckT ctx e) :: ctx) [] l)
 
     fun prettyType (TyVar i) = Int.toString i
       | prettyType (TyCon (con, ts)) =
         let fun pop o' l r = prettyType l ^ " " ^ o' ^ " " ^ prettyType r
             val o' = String.substring (con, 1, (String.size con - 2))
-            fun par ts x = if List.length ts > 0 then "(" ^ x ^ ")"
+            fun par ts x = if L.length ts > 0 then "(" ^ x ^ ")"
                            else x
         in if String.substring (con, 0, 1) = "(" then
-               par ts (pop o' (List.nth (ts, 0)) (List.nth (ts, 1)))
+               par ts (pop o' (L.nth (ts, 0)) (L.nth (ts, 1)))
            else
-               par ts (List.foldr (fn (t, s) => s ^ " " ^ prettyType t) con ts)
+               par ts (L.foldr (fn (t, s) => s ^ " " ^ prettyType t) con ts)
         end
       | prettyType _ = raise General.Fail ""
 end

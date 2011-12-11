@@ -11,6 +11,7 @@ structure Parser :> PARSER =
 (* structure Parser = *)
 struct
     type id = string
+
     datatype expr
       = Var of id
       | Abs of string * expr
@@ -18,6 +19,8 @@ struct
       | Let of id * expr * expr
       | Fix of id * expr
       | IntLit of int
+
+    type file = (id * expr) list
 
     exception ParseException of string
 
@@ -49,26 +52,37 @@ struct
                in  f o List.rev
                end
 
-    fun parser () =
+    val intLit = spaces >> lift (IntLit o atoi) (many1 digit)
+
+    val var = spaces >> lift Var idP
+
+    fun abs p = lift2 Abs (match "fn" >> spaces >> idP)
+                      (spaces >> match "=>" >> spaces >> p)
+
+    fun app p = lift2 App (p <* many1 space) p
+
+    fun fix p = lift2 Fix (match "fix" >> spaces >> idP)
+                      (spaces >> match "=>" >> spaces >> p)
+
+    fun letP p = lift3 Let (match "let" >> spaces >> idP)
+                       (spaces >> match "=" >> spaces >> p)
+                       (spaces >> match "in" >> spaces >> p)
+
+    fun exprP () =
         let
-            fun p () = parser () ()
-            val intLit = spaces >> lift (IntLit o atoi) (many1 digit)
-            val var = spaces >> lift Var idP
-            val abs = lift2 Abs (match "fn" >> spaces >> idP)
-                                (spaces >> match "=>" >> spaces >> p)
-            val app = lift2 App (p <* many1 space) p
-            val let_p = lift3 Let (match "let" >> spaces >> idP)
-                                  (spaces >> match "=" >> spaces >> p)
-                                  (spaces >> match "in" >> spaces >> p)
-            val fix = lift2 Fix (match "fix" >> spaces >> idP)
-                                (spaces >> match "=>" >> spaces >> p)
+            fun p () = exprP () ()
         in
             spaces >>
-            (try abs ++ try let_p ++ try fix ++ parens app ++ var ++ intLit ++ parens p)
+            (try (abs p) ++ try (letP p) ++ try (fix p) ++
+             parens (app p) ++ var ++ intLit ++ parens p)
         end
 
-    fun parse s =
-        case ParsComb.parse (parser (), s)
+    val fileP = many (lift2 (fn x => x)
+                            (match "let" >> spaces >> idP)
+                            (spaces *> match "=" *> spaces *> exprP () <* spaces))
+
+    fun parseExpr s =
+        case parse (spaces >> fileP) s
          of (Success e, s)        =>
             if S.size s = 0 then e
             else let val err = "Parsing failed, remaining input: " ^ s

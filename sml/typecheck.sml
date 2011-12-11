@@ -86,9 +86,13 @@ struct
         end
 
     val baseContext =
-        [ ("plus", TyCon (arrCon, [TyCon (intCon, []), TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])])]))
+        [ ("plus", TyCon (arrCon,
+                          [TyCon (intCon, []),
+                           TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])])]))
+
         , ("negate", TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])]))
         ]
+
     (*
      * Type checks a term. Returns the inferred type.
      * If the program is not typeable, raises a TypeException.

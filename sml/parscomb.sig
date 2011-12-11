@@ -18,7 +18,7 @@ sig
     type 'r parser
     type 'r susp = unit -> 'r parser
 
-    val parse : 'r susp * s -> ('r result * s)
+    val parse : 'r susp -> s -> ('r result * s)
 
     val return : 'r -> 'r susp
     val bind : 'a susp -> ('a -> 'b susp) -> 'b susp

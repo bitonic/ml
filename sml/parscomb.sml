@@ -13,7 +13,7 @@ struct
     type 'r parser = state -> ('r result * state)
     type 'r susp = unit -> 'r parser
 
-    fun parse (p, l) = case p () ((0, 0), l) of (r, (_, inp)) => (r, inp)
+    fun parse p l = case p () ((0, 0), l) of (r, (_, inp)) => (r, inp)
 
     fun return x () s = (Success x, s)
 

@@ -11,9 +11,11 @@ sig
       | Fix of id * expr
       | IntLit of int
 
+    type file = (id * expr) list
+
     exception ParseException of string
 
-    val parse : string -> expr (* Raises ParseException *)
+    val parseExpr : string -> file  (* Raises ParseException *)
     val prettyExpr : expr -> string
 end
 

@@ -3,9 +3,14 @@ structure Typecheck :> TYPECHECK =
 struct
     exception TypeException of string
 
+    datatype constructor
+      = Con of string
+      | ConOp of string
+      | ConTuple of int
+
     datatype typeExp
       = TyVar of int
-      | TyCon of string * typeExp list
+      | TyCon of constructor * typeExp list
       (* TyGen should appear only in type schemes. *)
       | TyScheme of int * typeExp
       | TyGen of int
@@ -13,9 +18,11 @@ struct
     type fileTypes = (Parser.id * typeExp) list
 
     structure L = List
+    structure S = String
+    structure U = Utils
 
-    val arrCon = "(->)"
-    val intCon = "int"
+    val arrCon = ConOp "->"
+    val intCon = Con "Int"
 
     fun lookup x l = case L.find (fn (y, _) => x = y) l
                       of SOME (_, el) => SOME el
@@ -146,27 +153,26 @@ struct
                 end
               | f ctx (IntLit i) = ([], TyCon (intCon, []))
 
-            and flit ctx (IntLIt i) = ([], TyCon (intCon, []))
-              | flit ctx (RealLit r) = ([], TyCon (realLit, []))
-              | flit ctx (TupleLit es) =
-                let 
-
+            and fLit ctx (IntLIt i) = ([], TyCon (intCon, []))
+              | fLit ctx (RealLit r) = ([], TyCon (realLit, []))
+              | fLit ctx (TupleLit es) =
+                let val ts = L.foldr (fn (e, s1) => let (s2, a) = f (applyctx s1 ctx) e
+                                                    in s2 @@ s1
+                                                    end) [] es
+                in  ([], TyCon (tupleCon (L.length es), ts))
         in #2 (f ctx t) handle TypeException s => (print s; raise TypeException s)
         end
 
     fun typecheck l =
-        L.rev (L.foldr (fn ((v, e), ctx) => (v, typecheckT ctx e) :: ctx) [] l)
+        L.rev (L.foldr (fn ((v, e), ctx) => (v, typecheckT ctx e) :: ctx) baseContext l)
 
     fun prettyType (TyVar i) = Int.toString i
       | prettyType (TyCon (con, ts)) =
-        let fun pop o' l r = prettyType l ^ " " ^ o' ^ " " ^ prettyType r
-            val o' = String.substring (con, 1, (String.size con - 2))
-            fun par ts x = if L.length ts > 0 then "(" ^ x ^ ")"
-                           else x
-        in if String.substring (con, 0, 1) = "(" then
-               par ts (pop o' (L.nth (ts, 0)) (L.nth (ts, 1)))
-           else
-               par ts (L.foldr (fn (t, s) => s ^ " " ^ prettyType t) con ts)
+        let fun pr ts' = S.concat (U.intersperse " " (L.map prettyType ts'))
+        in case con
+            of ConOp op'    => prettyType (L.nth (ts, 0)) ^ " " ^ op' ^ pr (L.tl ts)
+             | Con s        => s ^ pr ts
+             | ConTuple ts' => S.concat (["("] @ U.intersperse "," (L.map prettyType ts) @ [")"])
         end
       | prettyType _ = raise General.Fail ""
 end

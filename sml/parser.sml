@@ -8,7 +8,6 @@
  *)
 
 structure Parser :> PARSER =
-(* structure Parser = *)
 struct
     type id = string
 
@@ -34,9 +33,10 @@ struct
 
     structure S = String
     structure L = List
+    structure U = Utils
 
     val letter =
-        oneOf (String.explode "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
+        oneOf (S.explode "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
     val digit = oneOf [#"0", #"1", #"2", #"3", #"4", #"5", #"6", #"7", #"8", #"9"]
     val symbol = oneOf [#"'", #"_"]
     val space = oneOf [#"\t", #" ", #"\n"]
@@ -111,8 +111,5 @@ struct
       | prettyExpr (Literal i) = prettyLit i
     and prettyLit (IntLit i) = Int.toString i
       | prettyLit (RealLit r) = Real.toString r
-      | prettyLit (TupleLit t) = S.concat (["("] @
-                                           (L.foldr (fn (e, l) => l @ [","] @  [e]) []
-                                                    (L.map prettyExpr t)) @
-                                           [")"])
+      | prettyLit (TupleLit t) = S.concat (["("] @ L.intersperse "," (L.map prettyExpr t) @ [")"])
 end

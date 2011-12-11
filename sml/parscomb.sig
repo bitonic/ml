@@ -43,4 +43,6 @@ sig
     val many : 'r susp -> ('r list) susp
     val many1 : 'r susp -> ('r list) susp
     val oneOf : t list -> t susp
+    val sepBy : 'r susp -> 's susp -> ('r list) susp
+    val sepBy1 : 'r susp -> 's susp -> ('r list) susp
 end

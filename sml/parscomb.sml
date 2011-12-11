@@ -76,4 +76,8 @@ struct
         let fun f (x, sum) = sum ++ matchT x
         in List.foldr f (fail "Parser.oneOf: No items") ps
         end
+
+    fun sepBy1 p sep = p >>= (fn x => lift (fn xs => x :: xs) (many (sep >> p)))
+
+    fun sepBy p sep = sepBy1 p sep ++ return []
 end

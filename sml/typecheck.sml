@@ -146,6 +146,11 @@ struct
                 end
               | f ctx (IntLit i) = ([], TyCon (intCon, []))
 
+            and flit ctx (IntLIt i) = ([], TyCon (intCon, []))
+              | flit ctx (RealLit r) = ([], TyCon (realLit, []))
+              | flit ctx (TupleLit es) =
+                let 
+
         in #2 (f ctx t) handle TypeException s => (print s; raise TypeException s)
         end
 

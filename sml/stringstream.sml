@@ -11,7 +11,7 @@ struct
 
     fun uncons s =
         SOME (L.nth (S.explode (S.substring (s, 0, 1)), 0), S.extract (s, 1, NONE))
-        handle Subscrint => NONE
+        handle Subscript => NONE
 
     fun move c (col, row) = if c = #"\t" then (col + 8, row)
                             else if c = #"\n" then (0, row + 1)

@@ -17,29 +17,42 @@ struct
 
     type fileTypes = (Parser.id * typeExp) list
 
+    open Parser
     structure L = List
     structure S = String
     structure U = Utils
+
+    fun prettyType (TyVar i) = Int.toString i
+      | prettyType (TyCon (con, ts)) =
+        let fun pr ts' = S.concat (U.intersperse " " (L.map prettyType ts'))
+        in case con
+            of ConOp op'    => prettyType (L.nth (ts, 0)) ^ " " ^ op' ^ " " ^ pr (L.tl ts)
+             | Con s        => s ^ " " ^ pr ts
+             | ConTuple ts' => S.concat (["("] @
+                                         U.intersperse "," (L.map prettyType ts) @
+                                         [")"])
+        end
+      | prettyType (TyGen i) = Int.toString i
+      | prettyType (TyScheme (i, t)) = "forall " ^ Int.toString i ^ ". " ^ prettyType t
 
     val arrCon = ConOp "->"
     val intCon = Con "Int"
     val realCon = Con "Real"
 
-    fun lookup x l = case L.find (fn (y, _) => x = y) l
-                      of SOME (_, el) => SOME el
-                       | NONE         => NONE
+    val baseContext =
+        [ ("plus", TyCon (arrCon,
+                          [TyCon (intCon, []),
+                           TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])])]))
 
-    fun intersect l1 l2 =
-        L.filter (fn x => not (L.exists (fn y => x = y) l2)) l1
-
-    open Parser
+        , ("negate", TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])]))
+        ]
 
     (*
      * Applies the substitution to a type.
      * We do not need to worry about quantified type because they are treated
      * differently (TyGen).
      *)
-    fun apply sub (TyVar tv)        = (case lookup tv sub
+    fun apply sub (TyVar tv)        = (case U.lookup tv sub
                                         of SOME t => t
                                          | NONE   => TyVar tv)
       | apply sub (TyCon (con, ts)) = TyCon (con, L.map (apply sub) ts)
@@ -53,10 +66,13 @@ struct
     fun s1 @@ s2 = L.map (fn (tv, t) => (tv, apply s1 t)) s2 @ s1
 
     (* Gets all the free variables in a type *)
-    fun fv (TyVar u)         = [u]
-      | fv (TyCon (_, ts))   = L.concat (L.map fv ts)
-      | fv (TyScheme (_, t)) = fv t
-      | fv t                 = []
+    fun fv t =
+        let fun go (TyVar u)         = [u]
+              | go (TyCon (_, ts))   = U.nub (L.concat (L.map fv ts))
+              | go (TyScheme (_, t)) = fv t
+              | go t                 = []
+        in U.nub (go t)
+        end
 
     fun fvctx ctx = L.concat (L.map (fn (_, t) => fv t) ctx)
 
@@ -66,8 +82,9 @@ struct
      *)
     fun var_bind tv t =
         if t = TyVar tv then []
-        else if L.exists (fn x => x = tv) (fv t) then
-            raise TypeException "occurs check fails"
+        else if U.elem tv (fv t) then
+            raise TypeException ("Occurs check fails when binding \"" ^ Int.toString tv ^
+                                 "\"" ^ " to \"" ^ prettyType t ^ "\"")
         else [(tv, t)]
 
     (*
@@ -83,27 +100,22 @@ struct
             if con1 <> con2 then
                 raise TypeException "different constructors"
             else
-                L.foldr (fn ((t1, t2), s) => unify (apply s t1) (apply s t2) @@ s) [] tss
+                L.foldl (fn ((t1, t2), s) => unify (apply s t1) (apply s t2) @@ s) [] tss
         end
       | unify (TyVar tv) t          = var_bind tv t
       | unify t          (TyVar tv) = var_bind tv t
-      | unify _          _          = raise TypeException "types do not unify"
+      | unify t1         t2         =
+        raise TypeException ("Types \"" ^ prettyType t1 ^ "\" and \"" ^
+                             prettyType t2 ^ "\" do not unify")
 
     (* Quantifies all the type variables in the provided list. *)
     fun quantify tvs qt =
-        let val tvs' = L.filter (fn tv => L.exists (fn x => x = tv) tvs) (fv qt)
-            val len  = L.length tvs'
-            val s    = L.tabulate (len, (fn i => (L.nth (tvs', i), TyGen i)))
+        let val len  = L.length tvs
+            val s    = L.tabulate (len, (fn i => (L.nth (tvs, i), TyGen i)))
         in TyScheme (len, apply s qt)
         end
 
-    val baseContext =
-        [ ("plus", TyCon (arrCon,
-                          [TyCon (intCon, []),
-                           TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])])]))
-
-        , ("negate", TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])]))
-        ]
+    fun quantifyLet ctx t = quantify (U.difference (U.nub (fv t)) (fvctx ctx)) t
 
     (*
      * Type checks a term. Returns the inferred type.
@@ -115,67 +127,69 @@ struct
 
             fun freshen (TyScheme (n, t)) =
                 let val s = L.tabulate (n, (fn i => (i, fresh ())))
-                in apply s t
+                    fun go (TyGen i) = (case U.lookup i s
+                                         of NONE   => TyGen i
+                                          | SOME v => v)
+                      | go (TyVar v) = TyVar v
+                      | go (TyCon (con, ts)) = TyCon (con, L.map go ts)
+                      | go (TyScheme (i, t)) = TyScheme (i, go t)
+                in go t
                 end
               | freshen t = t
 
-            fun f ctx (Var v) =
-                (case lookup v ctx
+            fun go ctx (Var v) =
+                (case U.lookup v ctx
                   of NONE   => raise TypeException ("unbound variable " ^ v)
                    | SOME t => ([], freshen t))
 
-              | f ctx (Abs (v, t)) =
+              | go ctx (Abs (v, t)) =
                 let val ty      = fresh ()
-                    val (s1, a) = f ((v, ty) :: ctx) t
+                    val (s1, a) = go ((v, ty) :: ctx) t
                 in  (s1, apply s1 (TyCon (arrCon, [ty, a])))
                 end
 
-              | f ctx (App (e1, e2)) =
+              | go ctx (App (e1, e2)) =
                 let val ty      = fresh ()
-                    val (s1, a) = f ctx e1
-                    val (s2, b) = f (applyctx s1 ctx) e2
+                    val (s1, a) = go ctx e1
+                    val (s2, b) = go (applyctx s1 ctx) e2
                     val s3      = unify (apply s2 a) (TyCon (arrCon, [b, ty]))
                 in (s3 @@ s2 @@ s1, apply s3 ty)
                 end
 
-              | f ctx (Let (v, e1, e2)) =
-                let val (s1, a) = f ctx e1
+              | go ctx (Let (v, e1, e2)) =
+                let val (s1, a) = go ctx e1
                     val ctx'    = applyctx s1 ctx
-                    val a'      = quantify (intersect (fv a) (fvctx ctx')) a
-                    val (s2, b) = f ((v, a') :: ctx') e2
+                    val a'      = quantify (U.difference (fv a) (fvctx ctx')) a
+                    val (s2, b) = go ((v, a') :: ctx') e2
                 in  (s2 @@ s1, b)
                 end
 
-              | f ctx (Fix (v, e)) =
+              | go ctx (Fix (v, e)) =
                 let val ty      = fresh ()
-                    val (s1, a) = f ((v, ty) :: ctx) e
+                    val (s1, a) = go ((v, ty) :: ctx) e
                     val s2      = unify (apply s1 ty) a
                 in  (s2 @@ s1, apply s2 a)
                 end
-              | f ctx (Literal l) = fLit ctx l
+              | go ctx (Literal l) = goLit ctx l
 
-            and fLit ctx (IntLit i) = ([], TyCon (intCon, []))
-              | fLit ctx (RealLit r) = ([], TyCon (realCon, []))
-              | fLit ctx (TupleLit es) =
+            and goLit ctx (IntLit i) = ([], TyCon (intCon, []))
+              | goLit ctx (RealLit r) = ([], TyCon (realCon, []))
+              | goLit ctx (TupleLit es) =
                 let val ts = L.foldr
-                             (fn (e, (s1, l)) => let val (s2, a) = f (applyctx s1 ctx) e
-                                                 in (s2 @@ s1, l @ [a])
+                             (fn (e, (s1, l)) => let val (s2, a) = go (applyctx s1 ctx) e
+                                                 in (s2 @@ s1, a :: l)
                                                  end) ([], []) es
                 in  (#1 ts, TyCon (ConTuple (L.length es), #2 ts))
                 end
-        in #2 (f ctx t) handle TypeException s => (print s; raise TypeException s)
+        in #2 (go ctx t) handle TypeException s => (print s; raise TypeException s)
         end
 
     fun typecheck l =
-        L.rev (L.foldr (fn ((v, e), ctx) => (v, typecheckT ctx e) :: ctx) baseContext l)
-
-    fun prettyType (TyVar i) = Int.toString i
-      | prettyType (TyCon (con, ts)) =
-        let fun pr ts' = S.concat (U.intersperse " " (L.map prettyType ts'))
-        in case con
-            of ConOp op'    => prettyType (L.nth (ts, 0)) ^ " " ^ op' ^ pr (L.tl ts)
-             | Con s        => s ^ pr ts
-             | ConTuple ts' => S.concat (["("] @ U.intersperse "," (L.map prettyType ts) @ [")"])
+        let fun go ctx [] = ctx
+              | go ctx ((v, e) :: decls) =
+                let val t = typecheckT ctx e
+                in go ((v, quantify (fv t) t) :: ctx) decls
+                end
+        in L.rev (go baseContext l)
         end
-      | prettyType _ = raise General.Fail ""
 end

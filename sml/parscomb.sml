@@ -13,6 +13,8 @@ struct
     type 'r parser = state -> ('r result * state)
     type 'r susp = unit -> 'r parser
 
+    structure L = List
+
     fun parse p l = case p () ((0, 0), l) of (r, (_, inp)) => (r, inp)
 
     fun return x () s = (Success x, s)
@@ -73,9 +75,7 @@ struct
     fun many1 p = p >>= (fn x => lift (fn xs => x :: xs) (many p))
 
     fun oneOf ps =
-        let fun f (x, sum) = sum ++ matchT x
-        in List.foldr f (fail "Parser.oneOf: No items") ps
-        end
+        L.foldr (fn (x, sum) => sum ++ matchT x) (fail "Parser.oneOf: No items") ps
 
     fun sepBy1 p sep = p >>= (fn x => lift (fn xs => x :: xs) (many (sep >> p)))
 

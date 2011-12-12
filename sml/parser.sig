@@ -20,6 +20,7 @@ sig
 
     exception ParseException of string
 
-    val parseFile : string -> file  (* Raises ParseException *)
+    val parseString : string -> file  (* Raises ParseException *)
+    val parseFile : string -> file
     val prettyExpr : expr -> string
 end

@@ -89,7 +89,7 @@ struct
                             (match "let" >> spaces >> idP)
                             (spaces *> match "=" *> spaces *> exprP () <* spaces))
 
-    fun parseFile s =
+    fun parseString s =
         case parse (spaces >> fileP) s
          of (Success e, s)        =>
             if S.size s = 0 then e
@@ -101,6 +101,8 @@ struct
                           Int.toString c ^ ": " ^ s
             in (print err; raise ParseException err)
             end
+
+    fun parseFile f = parseString (TextIO.inputAll (TextIO.openIn f))
 
     fun prettyExpr (Var v) = v
       | prettyExpr (Abs (v, e)) = "(fn " ^ v ^ " => " ^ prettyExpr e ^ ")"

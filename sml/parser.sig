@@ -9,12 +9,12 @@ sig
       | App of expr * expr
       | Let of id * expr * expr
       | Fix of id * expr
-      | Literal of literal
+      | Literal of expr literal
 
-    and literal
+    and 'a literal
       = IntLit of int
       | RealLit of real
-      | TupleLit of expr list
+      | TupleLit of 'a list
 
     type file = (id * expr) list
 

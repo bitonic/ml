@@ -17,12 +17,12 @@ struct
       | App of expr * expr
       | Let of id * expr * expr
       | Fix of id * expr
-      | Literal of literal
+      | Literal of expr literal
 
-    and literal
+    and 'a literal
       = IntLit of int
       | RealLit of real
-      | TupleLit of expr list
+      | TupleLit of 'a list
 
     type file = (id * expr) list
 
@@ -38,36 +38,50 @@ struct
     val letter =
         oneOf (S.explode "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
     val digit = oneOf [#"0", #"1", #"2", #"3", #"4", #"5", #"6", #"7", #"8", #"9"]
-    val symbol = oneOf [#"'", #"_"]
+    val symbol = oneOf [#"'", #"_", #"?", #"!"]
     val space = oneOf [#"\t", #" ", #"\n"]
     val spaces = many space
+    val spaces1 = many1 space
     fun parens p = (match "(" >> spaces) *> p <* (spaces >> match ")")
 
-    val idP = letter >>=
-              (fn c => lift (fn s => S.implode (c :: s))
-                            (many (letter ++ digit ++ symbol)))
+    val reservedWords = ["let", "in"]
+
+    val idP = let val p = letter >>=
+                          (fn c => lift (fn s => S.implode (c :: s))
+                                        (many (letter ++ digit ++ symbol)))
+              in p >>= (fn id => if U.elem id reservedWords then
+                                     fail "idP: got reserved word"
+                                 else return id)
+              end
 
     fun fromSOME x = case x
                       of NONE    => raise General.Fail "fromSOME: got NONE"
                        | SOME x' => x'
 
-    val intLit = lift (IntLit o fromSOME o Int.fromString o S.implode) (many1 digit)
+    (* Value restriction sucks *)
+    fun intLit () =
+        lift (IntLit o fromSOME o Int.fromString o S.implode) (many1 digit)
 
-    val realLit = lift (RealLit o fromSOME o Real.fromString o S.implode)
-                       (many1 digit >>=
-                        (fn l => match "." >>
-                         lift (fn r => l @ [#"."] @ r) (many1 digit)))
+    fun realLit () =
+        lift (RealLit o fromSOME o Real.fromString o S.implode)
+             (many1 digit >>=
+              (fn l => match "." >>
+                       lift (fn r => l @ [#"."] @ r) (many1 digit)))
 
-    fun tupleLit p = lift TupleLit (parens (sepBy1 p (spaces >> match "," >> spaces)))
+    fun tupleLit p = let val sep = spaces >> match "," >> spaces
+                     in lift TupleLit
+                        (parens ((p <* sep) >>=
+                                 (fn e => lift (fn es => e :: es) (sepBy1 p sep))))
+                     end
 
-    fun literal p = lift Literal (realLit ++ intLit ++ tupleLit p)
+    fun literal p = lift Literal (realLit () ++ intLit () ++ tupleLit p)
 
     val var = spaces >> lift Var idP
 
     fun abs p = lift2 Abs (match "fn" >> spaces >> idP)
                       (spaces >> match "=>" >> spaces >> p)
 
-    fun app p = lift2 App (p <* many1 space) p
+    (* fun app p = lift2 App (p <* many1 space) p *)
 
     fun fix p = lift2 Fix (match "fix" >> spaces >> idP)
                       (spaces >> match "=>" >> spaces >> p)
@@ -79,10 +93,14 @@ struct
     fun exprP () =
         let
             fun p () = exprP () ()
-        in
-            spaces >>
-            (try (abs p) ++ try (letP p) ++ try (fix p) ++ try (literal p) ++
-             parens (app p) ++ var ++ parens p)
+            val ep = spaces >>
+                     (try (abs p) ++ try (letP p) ++ try (fix p) ++ try (literal p) ++
+                      try var ++ parens p)
+            fun app [x] = x
+              | app [x, y] = App (x, y)
+              | app (x :: y :: xs) = App (App (x, y), app xs)
+              | app _ = raise General.Fail "Parser.exprP.app: list.length < 1"
+        in ep >>= (fn e => lift (fn es => app (e :: es)) (many (spaces1 >> ep)))
         end
 
     val fileP = many (lift2 (fn x => x)
@@ -113,5 +131,7 @@ struct
       | prettyExpr (Literal i) = prettyLit i
     and prettyLit (IntLit i) = Int.toString i
       | prettyLit (RealLit r) = Real.toString r
-      | prettyLit (TupleLit t) = S.concat (["("] @ U.intersperse "," (L.map prettyExpr t) @ [")"])
+      | prettyLit (TupleLit t) = S.concat (["("] @
+                                           U.intersperse "," (L.map prettyExpr t) @
+                                           [")"])
 end

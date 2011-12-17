@@ -36,8 +36,10 @@ sig
     val plus : 'r susp -> 'r susp -> 'r susp
     val ++ : 'r susp * 'r susp -> 'r susp
 
+    val getPos : (int * int) susp
     val any : t susp
     val eof : unit susp
+    val matchT' : (t -> 'r option) -> 'r susp
     val match : s -> s susp
     val matchT : t -> t susp
     val many : 'r susp -> ('r list) susp

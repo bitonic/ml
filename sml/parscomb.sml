@@ -47,20 +47,31 @@ struct
                           | _              => r () s
     fun l ++ r = plus l r
 
+    fun getPos () (pos, inp) = (Success pos, (pos, inp))
+
     fun any () (pos, inp) =
         case S.uncons inp
          of SOME (t, inp') => (Success t, (S.move t pos, inp'))
-          | NONE           => (Fail ("Parsec.any: no input", pos), (pos, inp))
+          | NONE           => (Fail ("ParsComb.any: no input", pos), (pos, inp))
 
     fun eof () (pos, inp) =
         case S.uncons inp
          of NONE   => (Success (), (pos, inp))
-          | SOME _ => (Fail ("Parsec.eof: input remaining", pos), (pos, inp))
+          | SOME _ => (Fail ("ParsComb.eof: input remaining", pos), (pos, inp))
+
+    fun matchT' f =
+        let val ttostr = S.toString o S.toStream
+            fun check y = case f y
+                           of SOME r => return r
+                            | NONE   => fail ("ParsComb.matchT': could not match " ^
+                                              ttostr y ^ ".")
+        in any >>= check
+        end
 
     fun matchT x =
         let val ttostr = S.toString o S.toStream
             fun check y = if x = y then return x
-                          else fail ("Parsec.item: received " ^ ttostr y ^
+                          else fail ("ParsComb.matchT: received " ^ ttostr y ^
                                      ", expecting " ^ ttostr x ^ ".")
         in any >>= check
         end

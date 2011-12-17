@@ -12,15 +12,14 @@ sig
       | Literal of expr literal
 
     and 'a literal
-      = IntLit of int
-      | RealLit of real
+      = IntLit of string
+      | RealLit of string
       | TupleLit of 'a list
 
     type file = (id * expr) list
 
     exception ParseException of string
 
-    val parseString : string -> file  (* Raises ParseException *)
-    val parseFile : string -> file
+    val parseTokens : Lexer.token list -> file (* Raises ParseException *)
     val prettyExpr : expr -> string
 end

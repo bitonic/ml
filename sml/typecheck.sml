@@ -1,7 +1,9 @@
-
 structure Typecheck :> TYPECHECK =
 struct
     exception TypeException of string
+
+    datatype kind = Star
+                  | KiArr of kind * kind
 
     datatype constructor
       = Con of string
@@ -9,10 +11,11 @@ struct
       | ConTuple of int
 
     datatype typeExp
-      = TyVar of int
-      | TyCon of constructor * typeExp list
+      = TyVar of int * kind
+      | TyCon of constructor * kind
+      | TyApp of typeExp * typeExp
       (* TyGen should appear only in type schemes. *)
-      | TyScheme of int * typeExp
+      | TyScheme of kind list * typeExp
       | TyGen of int
 
     type fileTypes = (Parser.id * typeExp) list
@@ -22,30 +25,43 @@ struct
     structure S = String
     structure U = Utils
 
-    fun prettyType (TyVar i) = Int.toString i
-      | prettyType (TyCon (con, ts)) =
-        let fun pr ts' = S.concat (U.intersperse " " (L.map prettyType ts'))
-        in case con
-            of ConOp op'    => prettyType (L.nth (ts, 0)) ^ " " ^ op' ^ " " ^ pr (L.tl ts)
-             | Con s        => s ^ " " ^ pr ts
-             | ConTuple ts' => S.concat (["("] @
-                                         U.intersperse "," (L.map prettyType ts) @
-                                         [")"])
-        end
-      | prettyType (TyGen i) = Int.toString i
-      | prettyType (TyScheme (i, t)) = "forall " ^ Int.toString i ^ ". " ^ prettyType t
+    fun prettyType (TyVar (i, _)) = Int.toString i
+      | prettyType (TyGen i) = "t" ^ Int.toString i
+      | prettyType (TyScheme (_, t)) = prettyType t
+      | prettyType (TyCon (con, _)) =
+        (case con
+          of (Con s)      => s
+           | (ConOp op')  => "(" ^ op' ^ ")"
+           | (ConTuple i) => "(" ^ S.concat (L.tabulate (i, (fn _ => ","))) ^ ")")
+      | prettyType (TyApp (l, r)) =
+        "(" ^ prettyType l ^ " " ^ prettyType r ^ ")"
 
-    val arrCon = ConOp "->"
-    val intCon = Con "Int"
-    val realCon = Con "Real"
+    (* Kind arrows *)
+    infixr 3 *->
+    fun l *-> r = KiArr (l, r)
+
+    val arrCon = TyCon (ConOp "->", Star *-> Star *-> Star)
+    val intCon = TyCon (Con "Int", Star)
+    val realCon = TyCon (Con "Real", Star)
+    fun tupleCon n = TyCon (ConTuple n,
+                            L.foldr (fn (_, k) => Star *-> k) Star (L.tabulate (n, U.id)))
+
+    (* Type arrows *)
+    infixr 3 -->
+    fun l --> r = TyApp (TyApp (arrCon, l), r)
 
     val baseContext =
-        [ ("plus", TyCon (arrCon,
-                          [TyCon (intCon, []),
-                           TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])])]))
-
-        , ("negate", TyCon (arrCon, [TyCon (intCon, []), TyCon (intCon, [])]))
+        [ ("plus", intCon --> intCon --> intCon)
+        , ("negate", intCon --> intCon)
         ]
+
+    fun kind (TyVar (_, k)) = k
+      | kind (TyCon (_, k)) = k
+      | kind (TyApp (t, _)) =
+        (case kind t
+          of (KiArr (_, k)) => k
+           | _              => raise Fail "Typecheck.kind: malformed type")
+      | kind _ = raise Fail "Trying to get the type of a type scheme or scheme variable"
 
     (*
      * Applies the substitution to a type.
@@ -55,7 +71,7 @@ struct
     fun apply sub (TyVar tv)        = (case U.lookup tv sub
                                         of SOME t => t
                                          | NONE   => TyVar tv)
-      | apply sub (TyCon (con, ts)) = TyCon (con, L.map (apply sub) ts)
+      | apply sub (TyApp (l, r))    = TyApp (apply sub l, apply sub r)
       | apply sub (TyScheme (n, t)) = TyScheme (n, apply sub t)
       | apply _   t                 = t
 
@@ -67,8 +83,8 @@ struct
 
     (* Gets all the free variables in a type *)
     fun fv t =
-        let fun go (TyVar u)         = [u]
-              | go (TyCon (_, ts))   = U.nub (L.concat (L.map fv ts))
+        let fun go (TyVar tv)        = [tv]
+              | go (TyApp (l, r))    = fv l @ fv r
               | go (TyScheme (_, t)) = fv t
               | go t                 = []
         in U.nub (go t)
@@ -80,30 +96,32 @@ struct
      * Binds a variable to a type.
      * Checks that that type doesn't contain the variable.
      *)
-    fun var_bind tv t =
+    fun varBind (tv as (tvi, k)) t =
         if t = TyVar tv then []
         else if U.elem tv (fv t) then
-            raise TypeException ("Occurs check fails when binding \"" ^ Int.toString tv ^
+            raise TypeException ("Occurs check fails when binding \"" ^ Int.toString tvi ^
                                  "\"" ^ " to \"" ^ prettyType t ^ "\"")
+        else if k <> kind t then
+            raise TypeException "Kinds do not match"
         else [(tv, t)]
 
     (*
      * Unifies two types, returning the substitution that will make them
      * equal.
      *)
-    fun unify (TyCon (con1, ts1)) (TyCon (con2, ts2)) =
-        let fun zip [] [] = []
-              | zip (x :: xs) (y :: ys) = (x, y) :: zip xs ys
-              | zip _ _ = raise TypeException "different kinds"
-            val tss = zip ts1 ts2
-        in
-            if con1 <> con2 then
-                raise TypeException "different constructors"
-            else
-                L.foldl (fn ((t1, t2), s) => unify (apply s t1) (apply s t2) @@ s) [] tss
+    fun unify (TyApp (l1, r1)) (TyApp (l2, r2)) =
+        let val s1 = unify l1 l2
+            val s2 = unify (apply s1 r1) (apply s1 r2)
+        in  s2 @@ s1
         end
-      | unify (TyVar tv) t          = var_bind tv t
-      | unify t          (TyVar tv) = var_bind tv t
+      | unify (TyCon (con1, k1)) (TyCon (con2, k2)) =
+        if con1 = con2 then
+            if k1 = k2 then []
+            else raise Fail "Something went wrong, same constructors different kinds"
+        else
+            raise TypeException "Different constructors"
+      | unify (TyVar tv) t          = varBind tv t
+      | unify t          (TyVar tv) = varBind tv t
       | unify t1         t2         =
         raise TypeException ("Types \"" ^ prettyType t1 ^ "\" and \"" ^
                              prettyType t2 ^ "\" do not unify")
@@ -112,10 +130,8 @@ struct
     fun quantify tvs qt =
         let val len  = L.length tvs
             val s    = L.tabulate (len, (fn i => (L.nth (tvs, i), TyGen i)))
-        in TyScheme (len, apply s qt)
+        in TyScheme ((L.map #2 tvs), apply s qt)
         end
-
-    fun quantifyLet ctx t = quantify (U.difference (U.nub (fv t)) (fvctx ctx)) t
 
     (*
      * Type checks a term. Returns the inferred type.
@@ -123,16 +139,16 @@ struct
      *)
     fun typecheckT ctx t =
         let val counter = ref ~1
-            fun fresh () = (counter := !counter + 1; TyVar (!counter))
+            fun fresh k = (counter := !counter + 1; TyVar (!counter, k))
 
-            fun freshen (TyScheme (n, t)) =
-                let val s = L.tabulate (n, (fn i => (i, fresh ())))
+            fun freshen (TyScheme (ks, t)) =
+                let val s = L.tabulate (L.length ks, (fn i => (i, fresh (L.nth (ks, i)))))
                     fun go (TyGen i) = (case U.lookup i s
                                          of NONE   => TyGen i
                                           | SOME v => v)
-                      | go (TyVar v) = TyVar v
-                      | go (TyCon (con, ts)) = TyCon (con, L.map go ts)
+                      | go (TyApp (l, r)) = TyApp (go l, go r)
                       | go (TyScheme (i, t)) = TyScheme (i, go t)
+                      | go t = t
                 in go t
                 end
               | freshen t = t
@@ -143,16 +159,16 @@ struct
                    | SOME t => ([], freshen t))
 
               | go ctx (Abs (v, t)) =
-                let val ty      = fresh ()
+                let val ty      = fresh Star
                     val (s1, a) = go ((v, ty) :: ctx) t
-                in  (s1, apply s1 (TyCon (arrCon, [ty, a])))
+                in  (s1, apply s1 (ty --> a))
                 end
 
               | go ctx (App (e1, e2)) =
-                let val ty      = fresh ()
+                let val ty      = fresh Star
                     val (s1, a) = go ctx e1
                     val (s2, b) = go (applyctx s1 ctx) e2
-                    val s3      = unify (apply s2 a) (TyCon (arrCon, [b, ty]))
+                    val s3      = unify (apply s2 a) (b --> ty)
                 in (s3 @@ s2 @@ s1, apply s3 ty)
                 end
 
@@ -165,21 +181,20 @@ struct
                 end
 
               | go ctx (Fix (v, e)) =
-                let val ty      = fresh ()
+                let val ty      = fresh Star
                     val (s1, a) = go ((v, ty) :: ctx) e
                     val s2      = unify (apply s1 ty) a
                 in  (s2 @@ s1, apply s2 a)
                 end
               | go ctx (Literal l) = goLit ctx l
 
-            and goLit ctx (IntLit i) = ([], TyCon (intCon, []))
-              | goLit ctx (RealLit r) = ([], TyCon (realCon, []))
+            and goLit ctx (IntLit i) = ([], intCon)
+              | goLit ctx (RealLit r) = ([], realCon)
               | goLit ctx (TupleLit es) =
-                let val ts = L.foldr
-                             (fn (e, (s1, l)) => let val (s2, a) = go (applyctx s1 ctx) e
-                                                 in (s2 @@ s1, a :: l)
-                                                 end) ([], []) es
-                in  (#1 ts, TyCon (ConTuple (L.length es), #2 ts))
+                let val con = tupleCon (L.length es)
+                in L.foldr (fn (e, (s1, l)) => let val (s2, a) = go (applyctx s1 ctx) e
+                                               in (s2 @@ s1, TyApp (a, l))
+                                               end) ([], con) es
                 end
         in #2 (go ctx t) handle TypeException s => (print s; raise TypeException s)
         end

@@ -3,16 +3,20 @@ signature TYPECHECK =
 sig
     exception TypeException of string
 
+    datatype kind = Star
+                  | KiArr of kind * kind
+
     datatype constructor
       = Con of string
       | ConOp of string
       | ConTuple of int
 
     datatype typeExp
-      = TyVar of int
-      | TyCon of constructor * typeExp list
+      = TyVar of int * kind
+      | TyCon of constructor * kind
+      | TyApp of typeExp * typeExp
       (* TyGen should appear only in type schemes. *)
-      | TyScheme of int * typeExp
+      | TyScheme of kind list * typeExp
       | TyGen of int
 
     type fileTypes = (Parser.id * typeExp) list

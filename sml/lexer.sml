@@ -4,7 +4,6 @@ struct
                    | LPAREN | RPAREN | BADCHAR | ARROW | LAMBDA
                    | INTLIT of string | REALLIT of string | COMMA
 
-
     structure ParsComb = ParsCombFun (structure S = StringStream)
     open ParsComb
 

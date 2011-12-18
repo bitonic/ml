@@ -50,6 +50,10 @@ struct
     fun nub [] = []
       | nub (x :: xs) = x :: (nub (L.filter (fn y => not (x = y)) xs))
 
+    fun zip [] _ = []
+      | zip _ [] = []
+      | zip (x :: xs) (y :: ys) = (x, y) :: zip xs ys
+
     fun curry f a b = f (a, b)
 
     fun uncurry f (a, b) = f a b

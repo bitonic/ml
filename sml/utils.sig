@@ -8,6 +8,7 @@ sig
     val elem : ''a -> ''a list -> bool
     val difference : ''a list -> ''a list -> ''a list
     val nub : ''a list -> ''a list
+    val zip : 'a list -> 'b list -> ('a * 'b) list
 
     (* Functions *)
     val curry : (('a * 'b) -> 'c) -> 'a -> 'b -> 'c

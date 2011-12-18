@@ -1,8 +1,9 @@
 structure Lexer :> LEXER =
 struct
-    datatype token = LET | IN | FIX | EOF | ID of string | EQUALS
-                   | LPAREN | RPAREN | BADCHAR | ARROW | LAMBDA
+    datatype token = LET | IN | FIX | EOF | ID of string | CON of string
+                   | EQUALS | LPAREN | RPAREN | BADCHAR | ARROW | LAMBDA
                    | INTLIT of string | REALLIT of string | COMMA
+                   | DATA | BAR
 
     structure ParsComb = ParsCombFun (structure S = StringStream)
     open ParsComb
@@ -23,11 +24,14 @@ struct
       | toString (REALLIT f) = f
       | toString (INTLIT i) = i
       | toString COMMA = ","
+      | toString DATA = "data"
+      | toString BAR = "|"
+      | toString (CON c) = c
 
     structure U = Utils
     structure S = String
 
-    val reserved = [("let", LET), ("in", IN), ("fix", FIX)]
+    val reserved = [("let", LET), ("in", IN), ("fix", FIX), ("data", DATA)]
     fun isReserved s = U.lookup s reserved
 
     val letter =
@@ -41,7 +45,8 @@ struct
     val id = lift2 (fn (c, l) => let val s = S.implode (c :: l)
                                  in case isReserved s
                                      of SOME r => r
-                                      | _      => ID s
+                                      | _      => if Char.isLower c then ID s
+                                                  else CON s
                                  end)
                    letter (many (letter ++ digit ++ symbol))
 
@@ -59,7 +64,8 @@ struct
                 (match ")" >> return RPAREN) ++
                 (match "->" >> return ARROW) ++
                 (match "\\" >> return LAMBDA) ++
-                (match "," >> return COMMA)
+                (match "," >> return COMMA) ++
+                (match "|" >> return BAR)
 
     val lex = spaces *> many (spaces >> token) <* spaces
 

@@ -6,6 +6,6 @@ i:
              liststream.sml \
              parscomb.sig parscomb.sml \
              lexer.sig lexer.sml \
-             parser.sig parser.sml \
-             typecheck.sig typecheck.sml
+             parser.sig parser.sml
+             # typecheck.sig typecheck.sml
 

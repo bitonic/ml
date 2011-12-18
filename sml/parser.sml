@@ -10,6 +10,7 @@
 structure Parser :> PARSER =
 struct
     type id = string
+    type con = string
 
     datatype expr
       = Var of id
@@ -24,7 +25,18 @@ struct
       | RealLit of string
       | TupleLit of 'a list
 
-    type file = (id * expr) list
+    datatype typeSig
+      = TyCon of string
+      | TyApp of typeSig * typeSig
+      | TyVar of id
+
+    type dataBody = (con * typeSig option) list
+
+    datatype decl
+      = ValDecl of (id * expr)
+      | DataDecl of (con * id list * dataBody)
+
+    type file = decl list
 
     exception ParseException of string
 
@@ -68,25 +80,52 @@ struct
 
     fun letP p = lift3 Let (matchT LET >> idP) (matchT EQUALS >> p) (matchT IN >> p)
 
+    fun app _ [x] = x
+      | app con [x, y] = con (x, y)
+      | app con (x :: y :: xs) = con (con (x, y), app con xs)
+      | app _ _ = raise General.Fail "Parser.app: list.length < 1"
+
     fun exprP () =
         let
             fun p () = exprP () ()
             val ep = try (abs p) ++ try (letP p) ++ try (fix p) ++ try (literal p) ++
                      try var ++ parens p
-            fun app [x] = x
-              | app [x, y] = App (x, y)
-              | app (x :: y :: xs) = App (App (x, y), app xs)
-              | app _ = raise General.Fail "Parser.exprP.app: list.length < 1"
-        in ep >>= (fn e => lift (fn es => app (e :: es)) (many ep))
+        in ep >>= (fn e => lift (fn es => app App (e :: es)) (many ep))
         end
 
-    val fileP = many (lift2 (fn x => x) (matchT LET >> idP) (matchT EQUALS >> exprP ()))
+    val con = let fun matchCON (CON c) = SOME c
+                    | matchCON _       = NONE
+              in matchT' matchCON
+              end
+
+    val tyVar = lift TyVar idP
+
+    val tyCon = lift TyCon con
+
+    fun typeSig () =
+        let val tp = tyVar ++ tyCon
+        in tp >>= (fn t => lift (fn ts => app TyApp (t :: ts)) (many tp))
+        end
+
+    val dataBody =
+        sepBy1 (lift2 U.id con
+                      (lift SOME (typeSig ()) ++ return NONE))
+               (matchT BAR)
+
+    val valDecl =
+        lift2 ValDecl (matchT LET >> idP) (matchT EQUALS >> exprP ())
+
+    val dataDecl =
+        lift3 DataDecl (matchT DATA >> con) (many idP) (matchT EQUALS >> dataBody)
+
+    val fileP = many (dataDecl ++ valDecl)
 
     fun parseTokens tks =
         case parse fileP tks
          of (Success e, tks')       =>
             if L.length tks' = 0 then e
-            else let val err = "Parsing failed, remaining input."
+            else let val err = "Parsing failed, remaining input: " ^
+                               S.concat (U.intersperse " " (L.map toString tks'))
                  in (print err; raise ParseException err)
                  end
           | (Fail (msg, (c, l)), _) =>

@@ -2,6 +2,7 @@
 signature PARSER =
 sig
     type id = string
+    type con = string
 
     datatype expr
       = Var of id
@@ -16,7 +17,18 @@ sig
       | RealLit of string
       | TupleLit of 'a list
 
-    type file = (id * expr) list
+    datatype typeSig
+      = TyCon of string
+      | TyApp of typeSig * typeSig
+      | TyVar of id
+
+    type dataBody = (con * typeSig option) list
+
+    datatype decl
+      = ValDecl of (id * expr)
+      | DataDecl of (con * id list * dataBody)
+
+    type file = decl list
 
     exception ParseException of string
 

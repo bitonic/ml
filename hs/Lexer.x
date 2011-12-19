@@ -1,13 +1,13 @@
 {
 module Lexer
        ( Token (..)
-       , alexScanTokens
+       , lexML
        ) where
 }
 
 %wrapper "basic"
 
-$digit  = 0-9                 
+$digit  = 0-9
 $alpha  = [a-zA-Z]
 $symbol = ['_\?!]
 @id     = ($digit | $alpha | $symbol)*
@@ -23,16 +23,16 @@ tokens :-
   \)                 { const RPAREN }
   "->"               { const ARROW }
   \\                 { const LAMBDA }
-  $digit+            { INTLIT }
-  $digit+ \. $digit+ { REALLIT }
   \,                 { const COMMA }
   "data"             { const DATA }
   \|                 { const BAR }
-  [a-z]@id           { VAR }
-  [A-Z]@id           { CON }
-  \_@id              { const WILDCARD }
   "case"             { const CASE }
   "of"               { const OF }
+  $digit+            { INTLIT }
+  $digit+ \. $digit+ { REALLIT }
+  [a-z]@id           { VAR }
+  [A-Z]@id           { CON }
+  \_@id              { WILDCARD }
 
 {
 -- Each action has type :: String -> Token
@@ -53,8 +53,12 @@ data Token = LET
            | COMMA
            | DATA
            | BAR
-           | WILDCARD
+           | WILDCARD String
            | CASE
            | OF
            deriving (Show, Eq)
+
+lexML :: String -> [Token]
+lexML = alexScanTokens
+
 }

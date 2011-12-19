@@ -5,33 +5,35 @@ module Parser
        , TypeSig (..)
        , Literal (..)
        , Term (..)
-       , parse
+       , Pattern (..)
+       , parseML
        ) where
 
-import Lexer
+import Lexer (Token (..))
+
 }
 
-%name parse
+%name parseML
 %tokentype { Token }
 %error { parseError }
 
 %token
-  let  { LET }
-  in   { IN }
-  fix  { FIX }
-  '='  { EQUALS }
-  '('  { LPAREN }
-  ')'  { RPAREN }
-  "->" { ARROW }
-  'λ'  { LAMBDA }
-  int  { INTLIT $$ }
-  real { REALLIT $$ }
-  ','  { COMMA }
-  data { DATA }
-  '|'  { BAR }
-  var  { VAR $$ }
-  con  { CON $$ }
-  wildcard { WILDCARD }
+  let      { LET }
+  in       { IN }
+  fix      { FIX }
+  '='      { EQUALS }
+  '('      { LPAREN }
+  ')'      { RPAREN }
+  "->"     { ARROW }
+  'λ'      { LAMBDA }
+  int      { INTLIT $$ }
+  real     { REALLIT $$ }
+  ','      { COMMA }
+  data     { DATA }
+  '|'      { BAR }
+  var      { VAR $$ }
+  con      { CON $$ }
+  wildcard { WILDCARD $$ }
   case     { CASE }
   of       { OF }
 
@@ -40,7 +42,7 @@ import Lexer
 Decls : Decl       { [$1] }
       | Decl Decls { $1 : $2 }
 
-Decl : let var '=' Term               { ValDecl $2 $4 }
+Decl : var '=' Term                   { ValDecl $2 $4 }
      | data con TypeVars '=' DataBody { DataDecl $2 (reverse $3) (reverse $5) }
 
 Term : Atom                         { $1 }
@@ -48,7 +50,7 @@ Term : Atom                         { $1 }
      | let Pattern '=' Term in Term { Let $2 $4 $6 }
      | fix var "->" Term            { Fix $2 $4 }
      | Literal(Term)                { Literal $1 }
-     | Case                         { $1 }
+     | case Term of Cases           { Case $2 (reverse $4) }
      | Term Atom                    { App $1 $2 }
 
 Atom : var          { Var $1 }
@@ -61,17 +63,23 @@ Literal(p) : int                  { IntLit $1 }
 TupleBody(p) : p ',' p            { [$3, $1] }
              | TupleBody(p) ',' p { $3 : $1 }
 
-Pattern : wildcard            { WildPat }
-        | var                 { VarPat $1 }
-        | '(' con Pattern ')' { Pat $2 $3 }
-        | Literal(Pattern)    { LitPat $1 }
-          
-Case : case of Cases { Case (reverse $3) }
-  
-SingleCase : Pattern "->" Term
+Patterns : Patterns Pattern { $2 : $1 }
+         | Pattern          { [$1] }
 
+Pattern : wildcard            { WildPat $1 }
+        | var                 { VarPat $1 }
+        | con                 { Pat $1 Nothing }
+        | '(' con Pattern ')' { Pat $2 (Just $3) }
+        | Literal(Pattern)    { LitPat $1 }
+        | '(' Pattern ')'     { $2 }
+          
 Cases : Cases '|' SingleCase { $3 : $1 }
-      | SingleCase           { $1 }
+      | SingleCase           { [$1] }
+
+SingleCase : PatternCase "->" Term { ($1, $3) }
+
+PatternCase : con Pattern { Pat $1 (Just $2) }
+            | Pattern     { $1 }
 
 TypeVars : var          { [$1] }
          | TypeVars var { $2 : $1 }
@@ -111,13 +119,13 @@ data Term = Var String
           | Let Pattern Term Term
           | Fix String Term
           | Literal (Literal Term)
-          | Case [(Pattern, Term)]
+          | Case Term [(Pattern, Term)]
           deriving (Show, Eq)
 
 data Pattern = VarPat String
-             | Pat String Pattern
+             | Pat String (Maybe Pattern)
              | LitPat (Literal Pattern)
-             | WildPat
+             | WildPat String
              deriving (Show, Eq)
 
 type DataBody = [(String, Maybe TypeSig)]

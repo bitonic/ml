@@ -1,13 +1,5 @@
-
-(*
- <expr> ::= <var>
-          | fn <var> => <expr>
-          | <expr> <expr>
-          | let <var> = <expr> in <expr>
-          | fix <var> => <expr>
- *)
-
-structure Parser :> PARSER =
+(* structure Parser :> PARSER = *)
+structure Parser =
 struct
     type id = string
     type con = string
@@ -50,12 +42,12 @@ struct
 
     fun parens p = matchT LPAREN *> p <* matchT RPAREN
 
-
-    fun tupleLit p = let val sep = matchT COMMA
-                     in lift TupleLit
-                        (parens ((p <* sep) >>=
-                                 (fn e => lift (fn es => e :: es) (sepBy1 p sep))))
+    fun parseTup p = let val sep = matchT COMMA
+                     in parens ((p <* sep) >>=
+                                (fn e => lift (fn es => e :: es) (sepBy1 p sep)))
                      end
+
+    fun tupleLit p = lift TupleLit (parseTup p)
 
     fun literal p =
         let fun matchIL (INTLIT i) = SOME i
@@ -102,21 +94,38 @@ struct
 
     val tyCon = lift TyCon con
 
-    fun typeSig () =
-        let val tp = tyVar ++ tyCon
-        in tp >>= (fn t => lift (fn ts => app TyApp (t :: ts)) (many tp))
+    fun tyTup p =
+        let fun tupleCon ts =
+                "(" ^ S.concat (L.tabulate (L.length ts, (fn _ => ","))) ^ ")"
+            fun tuplize ts =
+                L.foldl (fn (r, l) => TyApp (l, r)) (TyCon (tupleCon ts)) ts
+        in lift tuplize (parseTup p)
         end
 
-    val dataBody =
+    fun typeSig () =
+        let fun recu () = typeSig () ()
+            val tp = tyVar ++ tyCon
+            val tyApp = tp >>= (fn t => lift (fn ts => app TyApp (t :: ts)) (many tp))
+            fun arrowize ts' =
+                let val (t :: ts) = L.rev ts'
+                in L.foldr (fn (l, r) => TyApp (TyApp (TyCon "(->)", l), r)) t ts
+                end
+        in (try (tyTup recu) ++ parens recu ++ tyApp) >>=
+           (fn t => lift (fn ts => arrowize (t :: ts)) (many (matchT ARROW >> recu)))
+        end
+
+    fun dataBody () =
         sepBy1 (lift2 U.id con
-                      (lift SOME (typeSig ()) ++ return NONE))
+                      (lift SOME
+                            (tyVar ++ tyCon ++ tyTup (typeSig ()) ++ parens (typeSig ())) ++
+                       return NONE))
                (matchT BAR)
 
     val valDecl =
         lift2 ValDecl (matchT LET >> idP) (matchT EQUALS >> exprP ())
 
     val dataDecl =
-        lift3 DataDecl (matchT DATA >> con) (many idP) (matchT EQUALS >> dataBody)
+        lift3 DataDecl (matchT DATA >> con) (many idP) (matchT EQUALS >> dataBody ())
 
     val fileP = many (dataDecl ++ valDecl)
 

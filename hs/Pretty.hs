@@ -1,5 +1,9 @@
 {-# LANGUAGE OverloadedStrings #-}
-module Pretty (prettyML) where
+module Pretty 
+       ( prettyML
+       , prettyDecl
+       , prettyTerm  
+       ) where
 
 import Data.List (intersperse)
 import Text.PrettyPrint
@@ -8,6 +12,12 @@ import Parser
 
 prettyML :: [Decl] -> String
 prettyML = render . vcat . map pDecl
+
+prettyDecl :: Decl -> String
+prettyDecl = render . pDecl
+
+prettyTerm :: Term -> String
+prettyTerm = render . pTerm
 
 pTerm :: Term -> Doc
 pTerm (Var v) = text v

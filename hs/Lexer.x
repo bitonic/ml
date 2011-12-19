@@ -1,6 +1,7 @@
 {
 module Lexer
        ( Token (..)
+       , Id
        , lexML
        ) where
 }
@@ -32,28 +33,26 @@ tokens :-
   $digit+ \. $digit+ { REALLIT }
   [a-z]@id           { VAR }
   [A-Z]@id           { CON }
-  \_@id              { WILDCARD }
 
 {
--- Each action has type :: String -> Token
 
--- The token type:
+type Id = String
+  
 data Token = LET
            | IN
            | FIX
-           | VAR String
-           | CON String
+           | VAR Id
+           | CON Id
            | EQUALS
            | LPAREN
            | RPAREN
            | ARROW
            | LAMBDA
-           | INTLIT String
-           | REALLIT String
+           | INTLIT Id
+           | REALLIT Id
            | COMMA
            | DATA
            | BAR
-           | WILDCARD String
            | CASE
            | OF
            deriving (Show, Eq)

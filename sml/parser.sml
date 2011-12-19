@@ -104,14 +104,14 @@ struct
 
     fun typeSig () =
         let fun recu () = typeSig () ()
-            val tp = tyVar ++ tyCon
+            val tp = tyVar ++ tyCon ++ try (tyTup recu) ++ parens recu
             val tyApp = tp >>= (fn t => lift (fn ts => app TyApp (t :: ts)) (many tp))
             fun arrowize ts' =
                 let val (t :: ts) = L.rev ts'
                 in L.foldr (fn (l, r) => TyApp (TyApp (TyCon "(->)", l), r)) t ts
                 end
-        in (try (tyTup recu) ++ parens recu ++ tyApp) >>=
-           (fn t => lift (fn ts => arrowize (t :: ts)) (many (matchT ARROW >> recu)))
+        in tp >>=
+           (fn t => lift (fn ts => arrowize (t :: ts)) (many (matchT ARROW >> tp)))
         end
 
     fun dataBody () =

@@ -10,21 +10,15 @@ module Parser
        , parseML
          -- * Pretty printing
        , prettyML
-       , pPattern
-       , pLiteral
-       , pCases
        , pDecl
-       , pDataBody
-       , pTy
+       , pPattern
        ) where
 
-import Control.Arrow (first)
 import Data.Foldable (Foldable)
 import Data.List (intersperse)
 import Data.Traversable (Traversable)
 import Text.PrettyPrint
 
-import Fix
 import Lexer (Token (..), Id)
 
 }
@@ -68,6 +62,7 @@ Term : Atom                         { $1 }
      | Term Atom                    { App $1 $2 }
 
 Atom : var           { Var $1 }
+     | con           { Con $1 }
      | Literal(Term) { Literal $1 }
      | '(' Term ')'  { $2 }
 
@@ -83,19 +78,19 @@ TupleBody(p) : p ',' p            { [$3, $1] }
 Patterns : Patterns Pattern { $2 : $1 }
          | Pattern          { [$1] }
 
-Pattern : var                 { varPat $1 }
-        | con                 { pat $1 Nothing }
-        | '(' con Pattern ')' { pat $2 (Just $3) }
-        | Literal(Pattern)    { litPat $1 }
+Pattern : var                 { VarPat $1 }
+        | con                 { Pat $1 Nothing }
+        | '(' con Pattern ')' { Pat $2 (Just $3) }
+        | Literal(Pattern)    { LitPat $1 }
         | '(' Pattern ')'     { $2 }
+
+PatternNoP : con Pattern { Pat $1 (Just $2) }
+           | Pattern     { $1 }
 
 Cases : Cases '|' SingleCase { $3 : $1 }
       | SingleCase           { [$1] }
 
-SingleCase : PatternCase "->" Term { ($1, $3) }
-
-PatternCase : con Pattern { pat $1 (Just $2) }
-            | Pattern     { $1 }
+SingleCase : PatternNoP "->" Term { ($1, $3) }
 
 TypeVars : var          { [$1] }
          | TypeVars var { $2 : $1 }
@@ -133,28 +128,20 @@ data Literal a = IntLit Id
                | TupleLit [a]
                deriving (Show, Eq, Functor, Foldable, Traversable)
 
-data Pattern a = VarPat Id
-               | Pat Id (Maybe a)
-               | LitPat (Literal a)
-               deriving (Show, Eq)
+data Pattern = VarPat Id
+             | Pat Id (Maybe Pattern)
+             | LitPat (Literal Pattern)
+             deriving (Show, Eq)
 
-varPat :: Id -> Fix Pattern
-varPat id = Roll (VarPat id)
-
-pat :: Id -> Maybe (Fix Pattern) -> Fix Pattern
-pat con ptM = Roll (Pat con ptM)
-
-litPat :: Literal (Fix Pattern) -> Fix Pattern
-litPat lit = Roll (LitPat lit)
-
-data Term = Var Id
-          | Abs [Fix Pattern] Term
-          | App Term Term
-          | Let (Fix Pattern) Term Term
-          | Fix Id Term
-          | Literal (Literal Term)
-          | Case Term [(Fix Pattern, Term)]
-          deriving (Show, Eq)
+data Term fn lt = Var Id
+                | Con Id
+                | Abs fn (Term fn lt)
+                | App (Term fn lt) (Term fn lt)
+                | Let lt (Term fn lt) (Term fn lt)
+                | Fix Id (Term fn lt)
+                | Literal (Literal (Term fn lt))
+                | Case (Term fn lt) [(Pattern, (Term fn lt))]
+                deriving (Show, Eq)
 
 type DataBody = [(Id, Maybe TypeSig)]
 
@@ -165,55 +152,52 @@ tupleTy ts = foldl TyApp (TyCon op) ts
 
 ------ PRETTY PRINTING --------------------------------------------------------
 
-prettyML :: [Decl Term] -> String
-prettyML = render . vcat . map (pDecl pTerm)
+prettyML :: [Decl (Term [Pattern] Pattern)] -> String
+prettyML = render . vcat . map (pDecl (hsep . (map pPattern)) pPattern)
 
-pTerm :: Term -> Doc
-pTerm (Var v) = text v
-pTerm (Abs pts t) = "\\" <> hsep (map pPattern' pts) <+> "->" <+> pTerm t
-pTerm (App t1 t2) = pTerm t1 <+> parensTerm t2
-pTerm (Let pt t1 t2) = sep [ "let" <+> pPattern' pt <+> equals <+>
-                             pTerm t1 <+> "in"
-                           , pTerm t2
-                           ]
-pTerm (Fix f t) = "fix" <+> text f <+> "->" <+> pTerm t
-pTerm (Literal lit) = pLiteral pTerm lit
-pTerm (Case t cases) = ("case" <+> pTerm t <+> "of") $+$
-                       nest 4 (pCases pPattern' pTerm (map (first unRoll) cases))
+pTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
+pTerm _ _ (Var v) = text v
+pTerm _ _ (Con c) = text c
+pTerm f l (Abs pts t) = "\\" <> f pts <+> "->" <+> pTerm f l t
+pTerm f l (App t1 t2) = pTerm f l t1 <+> parensTerm f l t2
+pTerm f l (Let pt t1 t2) = sep [ "let" <+> l pt <+> equals <+> pTerm f l t1 <+> "in"
+                               , pTerm f l t2
+                               ]
+pTerm f l (Fix g t) = "fix" <+> text g <+> "->" <+> pTerm f l t
+pTerm f l (Literal lit) = pLiteral (pTerm f l) lit
+pTerm f l (Case t cases) = ("case" <+> pTerm f l t <+> "of") $+$
+                           nest 4 (pCases (pTerm f l) cases)
 
-parensTerm :: Term -> Doc
-parensTerm t = case t of
+parensTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
+parensTerm f l t = case t of
     Abs _ _   -> parens d
     Let _ _ _ -> parens d
     Fix _ _   -> parens d
     App _ _   -> parens d
     _         -> d
   where
-    d = pTerm t
+    d = pTerm f l t
 
-pPattern :: (a -> Doc) -> Pattern a -> Doc
-pPattern _ (VarPat v) = text v
-pPattern _ (Pat con Nothing) = text con
-pPattern f (Pat con (Just pt)) = parens (text con <+> f pt)
-pPattern f (LitPat lit) = pLiteral f lit
-
-pPattern' :: Fix Pattern -> Doc
-pPattern' = pPattern pPattern' . unRoll
+pPattern :: Pattern -> Doc
+pPattern (VarPat v) = text v
+pPattern (Pat con Nothing) = text con
+pPattern (Pat con (Just pt)) = parens (text con <+> pPattern pt)
+pPattern (LitPat lit) = pLiteral pPattern lit
 
 pLiteral :: (a -> Doc) -> Literal a -> Doc
 pLiteral _ (IntLit i) = text (show i)
 pLiteral _ (RealLit r) = text (show r)
 pLiteral f (TupleLit xs) = parens . hcat . intersperse comma . map f $ xs
 
-pCases :: (a -> Doc) -> (b -> Doc) -> [(Pattern a, b)] -> Doc
-pCases f tf (c : cs) = (space <+> p c) $$ vcat (map (\c' -> "|" <+> p c') cs)
+pCases :: (a -> Doc) -> [(Pattern, a)] -> Doc
+pCases tf (c : cs) = (space <+> p c) $$ vcat (map (\c' -> "|" <+> p c') cs)
   where
-    p (pt, t) = pPattern f pt <+> "->" <+> tf t
-pCases _ _ _ = "Pretty.pCases: Received 0 cases"
+    p (pt, t) = pPattern pt <+> "->" <+> tf t
+pCases _ _ = "Parser.pCases: Received 0 cases"
 
-pDecl :: (a -> Doc) -> Decl a -> Doc
-pDecl f (ValDecl v t) = sep ["let" <+> text v <+> equals, nest 4 (f t)]
-pDecl _ (DataDecl con tyvars dbody)
+pDecl :: (fn -> Doc) -> (lt -> Doc) -> Decl (Term fn lt) -> Doc
+pDecl f l (ValDecl v t) = sep ["let" <+> text v <+> equals, nest 4 (pTerm f l t)]
+pDecl _ _ (DataDecl con tyvars dbody)
     = "data" <+> text con <+> hsep (map text tyvars) $$ nest 4 (pDataBody dbody)
 
 pDataBody :: DataBody -> Doc
@@ -221,7 +205,7 @@ pDataBody (d : ds) = equals <+> p d $$ vcat (map (\d' -> "|" <+> p d') ds)
   where
     p (s, Nothing) = text s
     p (s, Just ty) = text s <+> parensTy ty
-pDataBody _ = "Pretty.pDataBody: Received 0 options"
+pDataBody _ = "Parser.pDataBody: Received 0 options"
 
 pTy :: TypeSig -> Doc
 pTy (TyCon s) = text s

@@ -39,14 +39,14 @@ instance Types Type where
         Nothing -> TyVar tv
     apply s (TyApp l r) = TyApp (apply s l) (apply s r)
     apply _ t = t
-    
+
     fv (TyVar tv) = [tv]
     fv (TyApp l r) = fv l `union` fv r
     fv _ = []
 
 instance Types a => Types [a] where
     apply s = map (apply s)
-    
+
     fv = nub . concatMap fv
 
 (+->) :: TyVar -> Type -> Subst
@@ -75,7 +75,7 @@ data Scheme = Forall [Kind] Type
 
 instance Types Scheme where
     apply s (Forall ks t) = Forall ks (apply s t)
-    
+
     tv (Forall ks t) = fv t
 
 quantify :: [TyVar] -> Type -> Scheme

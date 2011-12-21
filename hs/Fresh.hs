@@ -45,5 +45,3 @@ class Monad m => MonadFresh c m | m -> c where
 
 instance (Enum c, Monad m) => MonadFresh c (FreshT c m) where
     fresh = FreshT (do {c <- get; modify succ; return c})
-
-    reset = FreshT (do {put

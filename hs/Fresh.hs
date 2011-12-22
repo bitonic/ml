@@ -34,6 +34,16 @@ newtype FreshT c m a = FreshT {unFreshT :: StateT c m a}
 instance (Enum c, Monad m) => MonadFresh c (FreshT c m) where
     fresh = FreshT (do {c <- get; modify succ; return c})
 
+instance MonadError e m => MonadError e (FreshT c m) where
+    throwError = lift . throwError
+    catchError (FreshT m) h =
+        FreshT . StateT $
+        \s -> runStateT m s `catchError` \e -> runStateT (unFreshT $ h e) s
+
+instance MonadState s m => MonadState s (FreshT c m) where
+    get = lift get
+    put = lift . put
+
 runFreshT :: (Enum c, Monad m) => FreshT c m a -> c -> m (a, c)
 runFreshT m = runStateT (unFreshT m)
 

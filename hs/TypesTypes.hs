@@ -98,6 +98,9 @@ instance Types Scheme where
 
     fv (Forall _ t) = fv t
 
+toScheme :: Type -> Scheme
+toScheme = Forall []
+
 quantify :: [TyVar] -> Type -> Scheme
 quantify tvs ty = Forall ks (apply s ty)
   where
@@ -109,33 +112,49 @@ class Instantiate t where
     inst :: [Type] -> t -> t
 
 instance Instantiate Type where
-    inst ts (TyGen i) | length ts < i = ts !! i
+    inst ts (TyGen i) | length ts > i = ts !! i
                       | otherwise = error "TypesTypes.inst: TyGen out of bounds"
     inst ts (TyApp l r) = TyApp (inst ts l) (inst ts r)
     inst _ t = t
 
-data Assump = Id :>: Scheme
-            deriving (Eq, Show)
+data Assump a = Id :>: a
+              deriving (Eq, Show)
 
-instance Types Assump where
+instance Types t => Types (Assump t) where
     apply s (v :>: sc) = v :>: apply s sc
     fv (_ :>: sc) = fv sc
 
-lookupAss :: Id -> [Assump] -> Maybe Scheme
+lookupAss :: Id -> [Assump b] -> Maybe b
 lookupAss v = lookup v . map (\(v' :>: sc) -> (v', sc))
+
+split :: Type -> [Type]
+split (TyApp (TyApp (TyCon ("(->)", _)) l) r) = l : split r
+split t = [t]
 
 -------- PRETTY PRINTING YO ---------------------------------------------------
 
+prettyScheme :: Scheme -> String
+prettyScheme = render . pScheme
+
 prettyType :: Type -> String
 prettyType = render . pType
+
+prettyAssumps :: (a -> Doc) -> [Assump a] -> String
+prettyAssumps f = render . vcat . map (pAssump f)
+
+pAssump :: (a -> Doc) -> Assump a -> Doc
+pAssump f (x :>: ty) = text x <+> ":" <+> f ty
+
+pScheme :: Scheme -> Doc
+pScheme (Forall _ ty) = pType ty
 
 pType :: Type -> Doc
 pType (TyVar (v, _)) = text v
 pType (TyCon (c, _)) = text c
 pType (TyApp (TyApp (TyCon ("(->)", _)) l) r) = parensType l <+> "->" <+> pType r
 pType (TyApp (TyApp (TyCon ("(,)", _)) l) r) =
-    "(" <> pType l <+> ", " <+> pType r <> ")"
-pType (TyApp (TyApp (TyApp (TyCon ("(,)", _)) l) m) r) =
+    "(" <> pType l <> "," <+> pType r <> ")"
+pType (TyApp (TyApp (TyApp (TyCon ("(,,)", _)) l) m) r) =
     "(" <> pType l <> "," <+> pType m <> "," <+> pType r <> ")"
 pType (TyApp l r) = parensType l <+> pType r
 pType (TyGen i) = text (show i)

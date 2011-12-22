@@ -41,7 +41,7 @@ dTerm (Abs pts t) = go pts
     go (pt : pts') = case pt of
         VarPat v -> liftM (Abs v) (go pts')
         _ -> do v <- freshVar
-                dTerm (Case (Var v) [(pt, Abs pts' t)])
+                liftM (Abs v) $ dTerm (Case (Var v) [(pt, Abs pts' t)])
 dTerm (Let pt t1 t2) = do
     dt1 <- dTerm t1
     dt2 <- dTerm t2

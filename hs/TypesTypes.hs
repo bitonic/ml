@@ -1,8 +1,9 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, OverloadedStrings #-}
 module TypesTypes where
 
 import Control.Monad.Error
 import Data.List (union, nub)
+import Text.PrettyPrint
 
 import Lexer (Id)
 
@@ -122,3 +123,23 @@ instance Types Assump where
 
 lookupAss :: Id -> [Assump] -> Maybe Scheme
 lookupAss v = lookup v . map (\(v' :>: sc) -> (v', sc))
+
+-------- PRETTY PRINTING YO ---------------------------------------------------
+
+prettyType :: Type -> String
+prettyType = render . pType
+
+pType :: Type -> Doc
+pType (TyVar (v, _)) = text v
+pType (TyCon (c, _)) = text c
+pType (TyApp (TyApp (TyCon ("(->)", _)) l) r) = parensType l <+> "->" <+> pType r
+pType (TyApp (TyApp (TyCon ("(,)", _)) l) r) =
+    "(" <> pType l <+> ", " <+> pType r <> ")"
+pType (TyApp (TyApp (TyApp (TyCon ("(,)", _)) l) m) r) =
+    "(" <> pType l <> "," <+> pType m <> "," <+> pType r <> ")"
+pType (TyApp l r) = parensType l <+> pType r
+pType (TyGen i) = text (show i)
+
+parensType :: Type -> Doc
+parensType t@(TyApp _ _) = parens (pType t)
+parensType t = pType t

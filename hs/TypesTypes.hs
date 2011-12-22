@@ -1,17 +1,27 @@
+{-# LANGUAGE FlexibleInstances, FlexibleContexts #-}
 module TypesTypes where
+
+import Control.Monad.Error
+import Data.List (union, nub)
 
 import Lexer (Id)
 
-data Kind = Star | KArr Kind Kind
+infixr 3 :*>
+data Kind = Star | Kind :*> Kind
           deriving (Eq, Show)
 
 data Type = TyVar TyVar
           | TyCon TyCon
           | TyApp Type Type
           | TyGen Int
+          deriving (Eq, Show)
 
 type TyVar = (Id, Kind)
 type TyCon = (Id, Kind)
+
+infixr 3 -->
+(-->) :: Type -> Type -> Type
+l --> r = TyApp (TyApp (TyCon ("(->)", Star :*> Star :*> Star)) l) r
 
 class HasKind t where
     kind :: t -> Kind
@@ -20,12 +30,12 @@ instance HasKind (Id, Kind) where
     kind = snd
 
 instance HasKind Type where
-    TyVar tv = kind tv
-    TyCon tc = kind tc
-    TyApp t _ = case kind t of
-        KArr _ k -> k
+    kind (TyVar tv) = kind tv
+    kind (TyCon tc) = kind tc
+    kind (TyApp t _) = case kind t of
+        _ :*> k -> k
         _        -> error "TypesTypes.kind: malformed type (mismatching kind)"
-    _ = error "TypesTypes.kind: TyGen"
+    kind _ = error "TypesTypes.kind: TyGen"
 
 type Subst = [(TyVar, Type)]
 
@@ -53,34 +63,62 @@ instance Types a => Types [a] where
 tv +-> t = [(tv, t)]
 
 infixr 4 @@
-(@@) :: Subst -> Substs -> Subst
+(@@) :: Subst -> Subst -> Subst
 s1 @@ s2 = [(tv, apply s1 t) | (tv, t) <- s2] ++ s1
 
-mgu :: Monad m => Type -> Type -> m Subst
+data TypeError = TypeError String
+               | UnboundVar Id
+               | UnboundConstructor Id
+               deriving (Show, Eq)
+
+instance Error TypeError where
+    strMsg = TypeError
+
+mgu :: MonadError TypeError m => Type -> Type -> m Subst
 mgu (TyApp l1 r1) (TyApp l2 r2) = do s1 <- mgu l1 l2
                                      s2 <- mgu (apply s1 r1) (apply s1 r2)
                                      return (s2 @@ s1)
 mgu (TyVar tv) t = varBind tv t
 mgu t (TyVar tv) = varBind tv t
 mgu (TyCon tc1) (TyCon tc2) | tc1 == tc2 = return []
-mgu _  _ = fail "Types do not unify"
+mgu _  _ = throwError (strMsg "Types do not unify")
 
-varBind :: Monad m => TyVar -> Type -> m Subst
-varBind tv t | TyVar tv == t = []
-             | tv `elem` fv t = fail "Occurs check fails"
-             | kind tv /= kind t = fail "Different kinds"
+varBind :: MonadError TypeError m => TyVar -> Type -> m Subst
+varBind tv t | TyVar tv == t = return []
+             | tv `elem` fv t = throwError (strMsg "Occurs check fails")
+             | kind tv /= kind t = throwError (strMsg "Different kinds")
              | otherwise = return (tv +-> t)
 
 data Scheme = Forall [Kind] Type
+            deriving (Eq, Show)
 
 instance Types Scheme where
     apply s (Forall ks t) = Forall ks (apply s t)
 
-    tv (Forall ks t) = fv t
+    fv (Forall _ t) = fv t
 
 quantify :: [TyVar] -> Type -> Scheme
 quantify tvs ty = Forall ks (apply s ty)
   where
-    tvs' = filter (`elem` fv tvs) tvs
+    tvs' = filter (`elem` fv ty) tvs
     s = zip tvs' (map TyGen [0..])
     ks = map kind tvs'
+
+class Instantiate t where
+    inst :: [Type] -> t -> t
+
+instance Instantiate Type where
+    inst ts (TyGen i) | length ts < i = ts !! i
+                      | otherwise = error "TypesTypes.inst: TyGen out of bounds"
+    inst ts (TyApp l r) = TyApp (inst ts l) (inst ts r)
+    inst _ t = t
+
+data Assump = Id :>: Scheme
+            deriving (Eq, Show)
+
+instance Types Assump where
+    apply s (v :>: sc) = v :>: apply s sc
+    fv (_ :>: sc) = fv sc
+
+lookupAss :: Id -> [Assump] -> Maybe Scheme
+lookupAss v = lookup v . map (\(v' :>: sc) -> (v', sc))

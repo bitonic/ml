@@ -43,14 +43,16 @@ import Lexer (Token (..), Id)
   con      { CON $$ }
   case     { CASE }
   of       { OF }
+  where    { WHERE }
+  ':'      { COLON }
 
 %%
 
 Decls : Decl       { [$1] }
       | Decl Decls { $1 : $2 }
 
-Decl : let var '=' Term               { ValDecl $2 $4 }
-     | data con TypeVars '=' DataBody { DataDecl $2 (reverse $3) (reverse $5) }
+Decl : let var '=' Term                 { ValDecl $2 $4 }
+     | data con TypeVars where DataBody { DataDecl $2 (reverse $3) (reverse $5) }
 
 Term : Atom                         { $1 }
      | 'λ' Patterns "->" Term       { Abs (reverse $2) $4 }
@@ -99,18 +101,14 @@ SingleCase : Pattern "->" Term { ($1, $3) }
 TypeVars : var          { [$1] }
          | TypeVars var { $2 : $1 }
 
-DataBody : DataOption              { [$1] }
-         | DataBody '|' DataOption { $3 : $1 }
+DataBody : DataBody '|' DataOption { $3 : $1 }
+         | DataOption              { [$1] }
 
--- DataOption : con TypeSigs { ($1, reverse $2) }
-DataOption : con TypeSigs {  ($1, reverse $2) }
+DataOption : con ':' TypeSig { ($1, $3) }
 
-TypeSigs : TypeSigs TyAtom { $2 : $1 }
-         | TyAtom          { [$1] }
-         | {- empty -}     { [] }
-
-TypeSig : TyAtom         { $1 }
-        | TypeSig TyAtom { TyApp $1 $2 }
+TypeSig : TyAtom              { $1 }
+        | TyAtom "->" TypeSig { TyApp (TyApp (TyCon "(->)") $1) $3 }
+        | TypeSig TyAtom      { TyApp $1 $2 }
 
 TyAtom : con             { TyCon $1 }
        | var             { TyVar $1 }
@@ -150,7 +148,7 @@ data Term fn lt = Var Id
                 | Case (Term fn lt) [(Pattern, (Term fn lt))]
                 deriving (Show, Eq)
 
-type DataBody = [(Id, [TypeSig])]
+type DataBody = [(Id, TypeSig)]
 
 tupleCon :: Int -> String
 tupleCon n = "(" ++ replicate (n - 1) ','  ++ ")"
@@ -207,23 +205,29 @@ pCases _ _ = "Parser.pCases: Received 0 cases"
 pDecl :: (fn -> Doc) -> (lt -> Doc) -> Decl (Term fn lt) -> Doc
 pDecl f l (ValDecl v t) = sep ["let" <+> text v <+> equals, nest 4 (pTerm f l t)]
 pDecl _ _ (DataDecl con tyvars dbody)
-    = "data" <+> text con <+> hsep (map text tyvars) $$ nest 4 (pDataBody dbody)
+    = "data" <+> text con <+> hsep (map text tyvars) <+> "where" $$
+      nest 4 (pDataBody dbody)
 
 pDataBody :: DataBody -> Doc
-pDataBody (d : ds) = equals <+> p d $$ vcat (map (\d' -> "|" <+> p d') ds)
+pDataBody (d : ds) = "  " <> p d $$ vcat (map (\d' -> "|" <+> p d') ds)
   where
-    p (s, ts) = text s <+> hsep (map pTy ts)
+    p (s, t) = text s <+> ":" <+> pType t
 pDataBody _ = "Parser.pDataBody: Received 0 options"
 
-pTy :: TypeSig -> Doc
-pTy (TyCon s) = text s
-pTy (TyApp l r) = pTy l <+> parensTy r
-pTy (TyVar v) = text v
+pType :: TypeSig -> Doc
+pType (TyVar v) = text v
+pType (TyCon c) = text c
+pType (TyApp (TyApp (TyCon "(->)") l) r) = parensType l <+> "->" <+> pType r
+pType (TyApp (TyApp (TyCon "(,)") l) r) =
+    "(" <> pType l <> "," <+> pType r <> ")"
+pType (TyApp (TyApp (TyApp (TyCon "(,,)") l) m) r) =
+    "(" <> pType l <> "," <+> pType m <> "," <+> pType r <> ")"
+pType (TyApp l r) = parensType l <+> pType r
 
-parensTy :: TypeSig -> Doc
-parensTy t = case t of
+parensType :: TypeSig -> Doc
+parensType t = case t of
     TyApp _ _ -> parens d
     _ -> d
   where
-    d = pTy t
+    d = pType t
 }

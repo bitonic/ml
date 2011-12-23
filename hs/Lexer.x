@@ -29,6 +29,8 @@ tokens :-
   \|                 { const BAR }
   "case"             { const CASE }
   "of"               { const OF }
+  "where"            { const WHERE }
+  \:                 { const COLON }
   $digit+            { INTLIT }
   $digit+ \. $digit+ { REALLIT }
   [a-z]@id           { VAR }
@@ -37,7 +39,7 @@ tokens :-
 {
 
 type Id = String
-  
+
 data Token = LET
            | IN
            | FIX
@@ -55,6 +57,8 @@ data Token = LET
            | BAR
            | CASE
            | OF
+           | WHERE
+           | COLON
            deriving (Show, Eq)
 
 lexML :: String -> [Token]

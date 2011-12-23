@@ -87,7 +87,7 @@ pTerm f l (Let pt t1 t2) = sep [ "let" <+> l pt <+> equals <+> pTerm f l t1 <+> 
                                , pTerm f l t2
                                ]
 pTerm f l (Fix g t) = "fix" <+> text g <+> "->" <+> pTerm f l t
-pTerm f l (Literal lit) = pLiteral lit
+pTerm _ _ (Literal lit) = pLiteral lit
 pTerm f l (Case t cases) = ("case" <+> pTerm f l t <+> "of") $+$
                            nest 4 (pCases (pTerm f l) cases)
 

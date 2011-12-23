@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, TupleSections, ScopedTypeVariables #-}
-module TI.TypeInfer where
+module TI.TypeInfer (inferType) where
 
 import Control.Monad.Error
 import Control.Monad.State

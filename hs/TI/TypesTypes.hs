@@ -1,21 +1,43 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, OverloadedStrings #-}
-module TI.TypesTypes where
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, OverloadedStrings,
+             TypeSynonymInstances #-}
+module TI.TypesTypes
+       ( Kind (..)
+       , Type
+       , TypeS (..)
+       , TyVar
+       , TyCon
+       , (-->)
+       , HasKind (..)
+       , Subst
+       , Types (..)
+       , (+->)
+       , (@@)
+       , TypeError (..)
+       , mgu
+       , varBind
+       , Scheme (..)
+       , toScheme
+       , quantify
+       , Instantiate (..)
+       , Assump (..)
+       , lookupAss
+         -- * Pretty printing
+       , prettyScheme
+       , prettyType
+       , prettyAssumps
+       ) where
 
 import Control.Monad.Error
 import Data.List (union, nub)
 import Text.PrettyPrint
 
-import Syntax (Id)
+import Syntax
 
 infixr 3 :*>
 data Kind = Star | Kind :*> Kind
           deriving (Eq, Show)
 
-data Type = TyVar TyVar
-          | TyCon TyCon
-          | TyApp Type Type
-          | TyGen Int
-          deriving (Eq, Show)
+type Type = TypeS (Id, Kind)
 
 type TyVar = (Id, Kind)
 type TyCon = (Id, Kind)
@@ -133,7 +155,15 @@ prettyScheme :: Scheme -> String
 prettyScheme = render . pScheme
 
 prettyType :: Type -> String
-prettyType = render . pType
+prettyType = render . p
+  where
+    p (TyApp (TyApp (TyCon ("(->)", _)) l) r) =
+        parensType p l <+> "->" <+> p r
+    p (TyApp (TyApp (TyCon ("(,)", _)) l) r) =
+        "(" <> p l <> "," <+> p r <> ")"
+    p (TyApp (TyApp (TyApp (TyCon ("(,,)", _)) l) m) r) =
+        "(" <> p l <> "," <+> p m <> "," <+> p r <> ")"
+    p t = pType (text . fst) t
 
 prettyAssumps :: (a -> Doc) -> [Assump a] -> String
 prettyAssumps f = render . vcat . map (pAssump f)
@@ -142,19 +172,4 @@ pAssump :: (a -> Doc) -> Assump a -> Doc
 pAssump f (x :>: ty) = text x <+> ":" <+> f ty
 
 pScheme :: Scheme -> Doc
-pScheme (Forall _ ty) = pType ty
-
-pType :: Type -> Doc
-pType (TyVar (v, _)) = text v
-pType (TyCon (c, _)) = text c
-pType (TyApp (TyApp (TyCon ("(->)", _)) l) r) = parensType l <+> "->" <+> pType r
-pType (TyApp (TyApp (TyCon ("(,)", _)) l) r) =
-    "(" <> pType l <> "," <+> pType r <> ")"
-pType (TyApp (TyApp (TyApp (TyCon ("(,,)", _)) l) m) r) =
-    "(" <> pType l <> "," <+> pType m <> "," <+> pType r <> ")"
-pType (TyApp l r) = parensType l <+> pType r
-pType (TyGen i) = text (show i)
-
-parensType :: Type -> Doc
-parensType t@(TyApp _ _) = parens (pType t)
-parensType t = pType t
+pScheme (Forall _ ty) = pType (text . fst) ty

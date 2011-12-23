@@ -5,31 +5,19 @@ import Control.Monad.Error
 import Control.Monad.State
 import Data.List ((\\))
 
-import Syntax hiding (TypeSig (..))
-import TI.TypesTypes
+import Syntax
 import Fresh
+import TI.TypesTypes
+import TI.BaseEnv
 
 inferType :: [Decl DTerm] -> Either TypeError ([Assump Scheme], [Assump Kind])
-inferType decls' = evalFresh (runErrorT (go baseTypes [] decls')) (0 :: Integer)
+inferType decls' = fmap (\(ts, ks) -> (ts \\ baseTypes, ks \\ baseKinds)) $
+                   evalFresh (runErrorT (go baseTypes baseKinds decls')) (0 :: Integer)
   where
     go ts ks [] = return (reverse ts, reverse ks)
     go ts ks (ValDecl v t : decls) = do
         ty <- evalStateT (tyTerm t) (InferState [] ts ks)
         go ((v :>: quantify (fv ty) ty) : ts) ks decls
-
-baseTypes :: [Assump Scheme]
-baseTypes =
-  [ "(,)" :>:
-    ( Forall [Star, Star]
-      (TyGen 0 --> TyGen 1 -->
-       TyApp (TyApp (TyCon ("(,)", Star :*> Star :*> Star)) (TyGen 0)) (TyGen 1)
-    ))
-  , "(,,)" :>:
-    ( Forall [Star, Star, Star]
-      (TyGen 0 --> TyGen 1 --> TyGen 2 -->
-       TyApp (TyApp (TyApp (TyCon ("(,,)", Star :*> Star :*> Star :*> Star)) (TyGen 0)) (TyGen 1)) (TyGen 2)
-    ))
-  ]
 
 class (MonadFresh Integer m, MonadError TypeError m) => InferMonad m where
     applySubst :: Types t => t -> m t
@@ -42,7 +30,6 @@ class (MonadFresh Integer m, MonadError TypeError m) => InferMonad m where
     putKinds   :: [Assump Kind] -> m ()
 
     unify      :: Type -> Type -> m ()
-
 
 data InferState = InferState { substitution :: Subst
                              , types        :: [Assump Scheme]
@@ -78,10 +65,6 @@ freshTyVar k = liftM (\i -> TyVar ("_v" ++ show i, k)) fresh
 
 freshen :: (Show c, MonadFresh c m) => Scheme -> m Type
 freshen (Forall ks t) = liftM (`inst` t) (mapM freshTyVar ks)
-
-intCon, realCon :: Type
-intCon = TyCon ("Int", Star)
-realCon = TyCon ("Real", Star)
 
 tyTerm :: InferMonad m => DTerm -> m Type
 tyTerm (Var v) = do

@@ -3,7 +3,8 @@ module Syntax
        ( Id
        , Decl (..)
        , DataBody
-       , TypeSig (..)
+       , TypeS (..)
+       , TypeSig
        , Literal (..)
        , Pattern (..)
        , Term (..)
@@ -17,6 +18,8 @@ module Syntax
          -- * Pretty printing
        , prettyML
        , prettyDesugar
+       , pType
+       , parensType
        ) where
 
 import Text.PrettyPrint
@@ -27,10 +30,13 @@ data Decl t = ValDecl Id t
             | DataDecl Id [Id] DataBody
             deriving (Show, Eq)
 
-data TypeSig = TyCon Id
-             | TyApp TypeSig TypeSig
-             | TyVar Id
-             deriving (Show, Eq)
+data TypeS t = TyCon t
+             | TyApp (TypeS t) (TypeS t)
+             | TyVar t
+             | TyGen Int
+            deriving (Show, Eq)
+
+type TypeSig = TypeS Id
 
 data Literal = IntLit Id
              | RealLit Id
@@ -125,22 +131,27 @@ pDecl _ _ (DataDecl con tyvars dbody)
 pDataBody :: DataBody -> Doc
 pDataBody (d : ds) = "  " <> p d $$ vcat (map (\d' -> "|" <+> p d') ds)
   where
-    p (s, t) = text s <+> ":" <+> pType t
+    p (s, t) = text s <+> ":" <+> pTypeSig t
 pDataBody _ = "Parser.pDataBody: Received 0 options"
 
-pType :: TypeSig -> Doc
-pType (TyVar v) = text v
-pType (TyCon c) = text c
-pType (TyApp (TyApp (TyCon "(->)") l) r) = parensType l <+> "->" <+> pType r
-pType (TyApp (TyApp (TyCon "(,)") l) r) =
-    "(" <> pType l <> "," <+> pType r <> ")"
-pType (TyApp (TyApp (TyApp (TyCon "(,,)") l) m) r) =
-    "(" <> pType l <> "," <+> pType m <> "," <+> pType r <> ")"
-pType (TyApp l r) = parensType l <+> pType r
+pTypeSig :: TypeSig -> Doc
+pTypeSig (TyApp (TyApp (TyCon "(->)") l) r) =
+    parensType pTypeSig l <+> "->" <+> pTypeSig r
+pTypeSig (TyApp (TyApp (TyCon "(,)") l) r) =
+    "(" <> pTypeSig l <> "," <+> pTypeSig r <> ")"
+pTypeSig (TyApp (TyApp (TyApp (TyCon "(,,)") l) m) r) =
+    "(" <> pTypeSig l <> "," <+> pTypeSig m <> "," <+> pTypeSig r <> ")"
+pTypeSig t = pType text t
 
-parensType :: TypeSig -> Doc
-parensType t = case t of
+pType :: (t -> Doc) -> TypeS t -> Doc
+pType f (TyVar v) = f v
+pType f (TyCon c) = f c
+pType f (TyApp l r) = parensType (pType f) l <+> pType f r
+pType f (TyGen i) = text (show i)
+
+parensType :: (TypeS t -> Doc) -> TypeS t -> Doc
+parensType f t = case t of
     TyApp _ _ -> parens d
     _ -> d
   where
-    d = pType t
+    d = f t

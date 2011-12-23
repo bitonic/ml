@@ -1,9 +1,11 @@
 {
 module Lexer
        ( Token (..)
-       , Id
        , lexML
        ) where
+
+import Syntax
+
 }
 
 %wrapper "basic"
@@ -37,8 +39,6 @@ tokens :-
   [A-Z]@id           { CON }
 
 {
-
-type Id = String
 
 data Token = LET
            | IN

@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, TupleSections, ScopedTypeVariables #-}
-module TI.TypeInfer (inferType) where
+module TI.TypeInfer where
 
 import Control.Monad.Error
 import Control.Monad.State
@@ -60,6 +60,9 @@ instance MonadInfer (StateT InferState (ErrorT TypeError (Fresh Integer))) where
            sub2 <- mgu (apply sub1 ty1) (apply sub1 ty2)
            extSubst sub2
 
+runInferMonad :: StateT InferState (ErrorT TypeError (Fresh Integer)) a -> InferState -> Either TypeError (a, InferState)
+runInferMonad m s = evalFresh (runErrorT (runStateT m s)) (0 :: Integer)
+
 lookupTypes :: MonadInfer m => Id -> m (Maybe Scheme)
 lookupTypes tyv = liftM (lookupAss tyv) getTypes
 
@@ -70,7 +73,7 @@ updateTypes :: MonadInfer m => m ()
 updateTypes = do {ctx <- getTypes; putTypes =<< applySubst ctx}
 
 freshTyVar :: (Show c, MonadFresh c m) => Kind -> m Type
-freshTyVar k = liftM (\i -> TyVar ("_v" ++ show i, k)) fresh
+freshTyVar k = liftM (\i -> TyVar ("_ty" ++ show i, k)) fresh
 
 freshen :: (Show c, MonadFresh c m) => Scheme -> m Type
 freshen (Forall ks t) = liftM (`inst` t) (mapM freshTyVar ks)
@@ -112,21 +115,25 @@ tyTerm (Fix v t) = do
     (`unify` ty) =<< applySubst tyv
     applySubst ty
 tyTerm (Literal l) = return (tyLit l)
-tyTerm (Case t cases) = tyTerm t >>= (`tyCases` cases)
+tyTerm (Case t cases) = do
+    ty <- tyTerm t
+    tyv <- freshTyVar Star
+    tyCases ty tyv cases
 
-tyCases :: MonadInfer m => Type -> [(Pattern, DTerm)] -> m Type
-tyCases ty [] = return ty
-tyCases ty (case' : cases) = do
-    ty' <- tyCase ty case'
-    unify ty ty'
-    ty'' <- applySubst ty'
-    tyCases ty'' cases
-
-tyCase :: MonadInfer m => Type -> (Pattern, DTerm) -> m Type
-tyCase ty (pt, t) = do
-    typt <- tyPattern pt
-    unify ty typt
-    tyTerm t
+tyCases :: MonadInfer m
+           => Type               -- * The type of the matched term
+           -> Type               -- * The return type
+           -> [(Pattern, DTerm)] -> m Type
+tyCases _ ty [] = return ty
+tyCases tyT ty1 ((pt, t) : cases) = do
+    tyPt <- tyPattern pt
+    unify tyPt tyT
+    ty1' <- applySubst ty1
+    tyT' <- applySubst tyT
+    ty2 <- tyTerm t
+    unify ty1' ty2
+    ty1'' <- applySubst ty1'
+    tyCases tyT' ty1'' cases
 
 tyPattern :: MonadInfer m => Pattern -> m Type
 tyPattern (VarPat v) = do

@@ -24,6 +24,7 @@ module TI.TypesTypes
        , prettyScheme
        , prettyType
        , prettyAssumps
+       , prettySubst
        , pType
        , pScheme
        , pKind
@@ -34,6 +35,8 @@ import Data.List (union, nub)
 import Text.PrettyPrint
 
 import Syntax
+
+import Debug.Trace
 
 -------------------------------------------------------------------------------
 
@@ -100,7 +103,22 @@ data TypeError = TypeError String
                | MismatchingKinds Id Kind Kind
                | UnboundTypeVar Id
                | UnboundTypeConstructor Id
-               deriving (Show, Eq)
+               | OccursCheck Type Type
+               deriving (Eq)
+
+instance Show TypeError where
+    show (TypeError s) = "TypeError: " ++ s
+    show (UnboundVar v) = "Unboud variable \"" ++ v ++ "\""
+    show (UnboundConstructor c) = "Unbound constructor \"" ++ c ++ "\""
+    show (MismatchingKinds tyv k1 k2) =
+        "Mismatching kinds for type variable " ++ tyv ++ ": \"" ++
+        prettyKind k1 ++ "\" and \"" ++ prettyKind k2 ++ "\""
+    show (UnboundTypeVar tyv) = "Unbound type variable \"" ++ tyv ++ "\""
+    show (UnboundTypeConstructor tyc) =
+        "Unbound type constructor \"" ++ tyc ++ "\""
+    show (OccursCheck ty1 ty2) =
+         "Occurs check fails when unifying \"" ++ prettyType ty1 ++ "\" with \"" ++
+         prettyType ty2 ++ "\""
 
 instance Error TypeError where
     strMsg = TypeError
@@ -118,7 +136,7 @@ mgu _  _ = throwError (strMsg "Types do not unify")
 varBind :: MonadError TypeError m => TyVar -> Type -> m Subst
 varBind tyv ty
     | TyVar tyv == ty = return []
-    | tyv `elem` fv ty = throwError (strMsg "Occurs check fails")
+    | tyv `elem` fv ty = throwError $ OccursCheck (TyVar tyv) ty
     | kind tyv /= kind ty = throwError (strMsg "Different kinds")
     | otherwise = return (tyv +-> ty)
 
@@ -185,9 +203,15 @@ pAssump f (x :>: ty) = text x <+> ":" <+> f ty
 pScheme :: Scheme -> Doc
 pScheme (Forall _ ty) = pType ty
 
+prettyKind :: Kind -> String
+prettyKind = render . pKind
+
 pKind :: Kind -> Doc
 pKind Star = "*"
 pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
   where
     p Star = "*"
     p k = parens (pKind k)
+
+prettySubst :: Subst -> String
+prettySubst = render . vcat . map (\(tyv, ty) -> text (fst tyv) <+> "=>" <+> pType ty)

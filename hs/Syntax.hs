@@ -18,9 +18,9 @@ module Syntax
          -- * Pretty printing
        , prettyML
        , prettyDesugar
-       , pType
+       , pTypeS
        , pTypeSig
-       , parensType
+       , pParensTypeS
        ) where
 
 import Text.PrettyPrint
@@ -74,7 +74,7 @@ tupleCon :: Int -> String
 tupleCon n = "(" ++ replicate (n - 1) ','  ++ ")"
 
 tupleType :: [TypeSig] -> TypeSig
-tupleType ts = foldl TyApp (TyCon (tupleCon (length ts))) ts
+tupleType tss = foldl TyApp (TyCon (tupleCon (length tss))) tss
 
 tupleTerm :: [Term fn lt] -> Term fn lt
 tupleTerm ts = foldl App (Con (tupleCon (length ts))) ts
@@ -112,7 +112,7 @@ parensTerm f l t = case t of
 
 pPattern :: Pattern -> Doc
 pPattern (VarPat v) = text v
-pPattern (Pat con pts) = parens (text con <+> hsep (map pPattern pts))
+pPattern (Pat c pts) = parens (text c <+> hsep (map pPattern pts))
 pPattern (LitPat lit) = pLiteral lit
 
 pLiteral :: Literal -> Doc
@@ -120,41 +120,42 @@ pLiteral (IntLit i) = text (show i)
 pLiteral (RealLit r) = text (show r)
 
 pCases :: (a -> Doc) -> [(Pattern, a)] -> Doc
-pCases tf (c : cs) = (space <+> p c) $$ vcat (map (\c' -> "|" <+> p c') cs)
+pCases tf (case' : cases) = (space <+> p case') $$
+                            vcat (map (\case'' -> "|" <+> p case'') cases)
   where
     p (pt, t) = pPattern pt <+> "->" <+> tf t
 pCases _ _ = "Parser.pCases: Received 0 cases"
 
 pDecl :: (fn -> Doc) -> (lt -> Doc) -> Decl (Term fn lt) -> Doc
 pDecl f l (ValDecl v t) = sep ["let" <+> text v <+> equals, nest 4 (pTerm f l t)]
-pDecl _ _ (DataDecl con tyvars dbody)
-    = "data" <+> text con <+> hsep (map text tyvars) <+> "where" $$
+pDecl _ _ (DataDecl c tyvs dbody)
+    = "data" <+> text c <+> hsep (map text tyvs) <+> "where" $$
       nest 4 (pDataBody dbody)
 
 pDataBody :: DataBody -> Doc
-pDataBody (d : ds) = space <+> p d $$ vcat (map (\d' -> "|" <+> p d') ds)
+pDataBody (opt : opts) = space <+> p opt $$ vcat (map (\opt' -> "|" <+> p opt') opts)
   where
-    p (s, ts) = text s <+> hsep (map pTypeSig ts)
+    p (c, tss) = text c <+> hsep (map pTypeSig tss)
 pDataBody _ = "Parser.pDataBody: Received 0 options"
 
 pTypeSig :: TypeSig -> Doc
-pTypeSig (TyApp (TyApp (TyCon "(->)") l) r) =
-    parensType pTypeSig l <+> "->" <+> pTypeSig r
-pTypeSig (TyApp (TyApp (TyCon "(,)") l) r) =
-    "(" <> pTypeSig l <> "," <+> pTypeSig r <> ")"
-pTypeSig (TyApp (TyApp (TyApp (TyCon "(,,)") l) m) r) =
-    "(" <> pTypeSig l <> "," <+> pTypeSig m <> "," <+> pTypeSig r <> ")"
-pTypeSig t = pType text t
+pTypeSig (TyApp (TyApp (TyCon "(->)") ts1) ts2) =
+    pParensTypeS pTypeSig ts1 <+> "->" <+> pTypeSig ts2
+pTypeSig (TyApp (TyApp (TyCon "(,)") ts1) ts2) =
+    "(" <> pTypeSig ts1 <> "," <+> pTypeSig ts2 <> ")"
+pTypeSig (TyApp (TyApp (TyApp (TyCon "(,,)") ts1) ts2) ts3) =
+    "(" <> pTypeSig ts1 <> "," <+> pTypeSig ts2 <> "," <+> pTypeSig ts3 <> ")"
+pTypeSig ts = pTypeS text ts
 
-pType :: (t -> Doc) -> TypeS t -> Doc
-pType f (TyVar v) = f v
-pType f (TyCon c) = f c
-pType f (TyApp l r) = parensType (pType f) l <+> pType f r
-pType f (TyGen i) = text (show i)
+pTypeS :: (t -> Doc) -> TypeS t -> Doc
+pTypeS f (TyVar tyv) = f tyv
+pTypeS f (TyCon tyc) = f tyc
+pTypeS f (TyApp ty1 ty2) = pParensTypeS (pTypeS f) ty1 <+> pTypeS f ty2
+pTypeS _ (TyGen i) = text (show i)
 
-parensType :: (TypeS t -> Doc) -> TypeS t -> Doc
-parensType f t = case t of
+pParensTypeS :: (TypeS t -> Doc) -> TypeS t -> Doc
+pParensTypeS f ty = case ty of
     TyApp _ _ -> parens d
     _ -> d
   where
-    d = f t
+    d = f ty

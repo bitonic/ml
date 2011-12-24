@@ -12,22 +12,22 @@ import Fresh
 import TI.TypesTypes
 import TI.BaseEnv
 
-import Debug.Trace
-
 inferType :: [Decl DTerm] -> Either TypeError ([Assump Scheme], [Assump Kind])
-inferType decls' = fmap (\(ts, ks) -> (ts \\ baseTypes, ks \\ baseKinds)) $
-                   evalFresh (runErrorT (go baseTypes baseKinds decls')) (0 :: Integer)
+inferType decls' =
+    fmap (\(tys, ks) -> (tys \\ baseTypes, ks \\ baseKinds)) $
+    evalFresh (runErrorT (go baseTypes baseKinds decls')) (0 :: Integer)
   where
-    go ts ks [] = return (reverse ts, reverse ks)
-    go ts ks (ValDecl v t : decls) = do
-        ty <- evalStateT (tyTerm t) (InferState [] ts ks)
-        go ((v :>: quantify (fv ty) ty) : ts) ks decls
-    go ts ks (DataDecl con vars body : decls) = do
-        InferState _ ts' ks' <- execStateT (tyDataDecl con vars body) (InferState [] ts ks)
-        go ts' ks' decls
+    go tys ks [] = return (reverse tys, reverse ks)
+    go tys ks (ValDecl v t : decls) = do
+        ty <- evalStateT (tyTerm t) (InferState [] tys ks)
+        go ((v :>: quantify (fv ty) ty) : tys) ks decls
+    go tys ks (DataDecl tyc tyvs body : decls) = do
+        InferState _ tys' ks' <-
+            execStateT (tyDataDecl tyc tyvs body) (InferState [] tys ks)
+        go tys' ks' decls
 
 class (MonadFresh Integer m, MonadError TypeError m) => MonadInfer m where
-    applySubst :: Types t => t -> m t
+    applySubst :: Types ty => ty -> m ty
     extSubst   :: Subst -> m ()
 
     getTypes   :: m [Assump Scheme]
@@ -45,24 +45,26 @@ data InferState = InferState { substitution :: Subst
                 deriving (Eq, Show)
 
 instance MonadInfer (StateT InferState (ErrorT TypeError (Fresh Integer))) where
-    applySubst t = liftM (`apply` t) (gets substitution)
-    extSubst s = modify (\(InferState s' ts ks) -> (InferState (s @@ s') ts ks))
+    applySubst ty = liftM (`apply` ty) (gets substitution)
+    extSubst sub =
+        modify (\(InferState sub' tys ks) -> (InferState (sub @@ sub') tys ks))
 
     getTypes = gets types
-    putTypes ts = modify (\(InferState s _ ks) -> (InferState s ts ks))
+    putTypes tys = modify (\(InferState s _ ks) -> (InferState s tys ks))
 
     getKinds = gets kinds
-    putKinds ks = modify (\(InferState s ts _) -> (InferState s ts ks))
+    putKinds ks = modify (\(InferState s tys _) -> (InferState s tys ks))
 
-    unify t1 t2 = do s1 <- gets substitution
-                     s2 <- mgu (apply s1 t1) (apply s1 t2)
-                     extSubst s2
+    unify ty1 ty2 =
+        do sub1 <- gets substitution
+           sub2 <- mgu (apply sub1 ty1) (apply sub1 ty2)
+           extSubst sub2
 
 lookupTypes :: MonadInfer m => Id -> m (Maybe Scheme)
-lookupTypes v = liftM (lookupAss v) getTypes
+lookupTypes tyv = liftM (lookupAss tyv) getTypes
 
 addType :: MonadInfer m => Assump Scheme -> m ()
-addType ass = do {ctx <- getTypes; putTypes (ass : ctx)}
+addType scs = do {ctx <- getTypes; putTypes (scs : ctx)}
 
 updateTypes :: MonadInfer m => m ()
 updateTypes = do {ctx <- getTypes; putTypes =<< applySubst ctx}
@@ -75,50 +77,50 @@ freshen (Forall ks t) = liftM (`inst` t) (mapM freshTyVar ks)
 
 tyTerm :: MonadInfer m => DTerm -> m Type
 tyTerm (Var v) = do
-    tM <- lookupTypes v
-    case tM of
-        Just t -> freshen t
+    tyM <- lookupTypes v
+    case tyM of
+        Just ty -> freshen ty
         Nothing -> throwError (UnboundVar v)
 tyTerm (Con c) = do
-    tM <- lookupTypes c
-    case tM of
-        Just t -> freshen t
+    tyM <- lookupTypes c
+    case tyM of
+        Just ty -> freshen ty
         Nothing -> throwError (UnboundConstructor c)
 tyTerm (Abs v t) = do
-    tv <- freshTyVar Star
-    addType (v :>: toScheme tv)
-    a <- tyTerm t
-    applySubst (tv --> a)
-tyTerm (App l r) = do
-    tv <- freshTyVar Star
-    a <- tyTerm l
+    tyv <- freshTyVar Star
+    addType (v :>: toScheme tyv)
+    ty1 <- tyTerm t
+    applySubst (tyv --> ty1)
+tyTerm (App t1 t2) = do
+    tyv <- freshTyVar Star
+    ty1 <- tyTerm t1
     updateTypes
-    b <- tyTerm r
-    (`unify` (b --> tv)) =<< applySubst a
-    applySubst tv
+    ty2 <- tyTerm t2
+    (`unify` (ty2 --> tyv)) =<< applySubst ty1
+    applySubst tyv
 tyTerm (Let v t1 t2) = do
-    a <- tyTerm t1
+    ty <- tyTerm t1
     updateTypes
     ctxFv <- liftM fv getTypes
-    let a' = quantify (fv a \\ ctxFv) a
-    addType (v :>: a')
+    let ty' = quantify (fv ty \\ ctxFv) ty
+    addType (v :>: ty')
     tyTerm t2
 tyTerm (Fix v t) = do
-    tv <- freshTyVar Star
-    addType (v :>: toScheme tv)
-    a <- tyTerm t
-    (`unify` a) =<< applySubst tv
-    applySubst a
+    tyv <- freshTyVar Star
+    addType (v :>: toScheme tyv)
+    ty <- tyTerm t
+    (`unify` ty) =<< applySubst tyv
+    applySubst ty
 tyTerm (Literal l) = return (tyLit l)
 tyTerm (Case t cases) = tyTerm t >>= (`tyCases` cases)
 
 tyCases :: MonadInfer m => Type -> [(Pattern, DTerm)] -> m Type
 tyCases ty [] = return ty
-tyCases ty (cs : css) = do
-    ty' <- tyCase ty cs
+tyCases ty (case' : cases) = do
+    ty' <- tyCase ty case'
     unify ty ty'
     ty'' <- applySubst ty'
-    tyCases ty'' css
+    tyCases ty'' cases
 
 tyCase :: MonadInfer m => Type -> (Pattern, DTerm) -> m Type
 tyCase ty (pt, t) = do
@@ -128,82 +130,89 @@ tyCase ty (pt, t) = do
 
 tyPattern :: MonadInfer m => Pattern -> m Type
 tyPattern (VarPat v) = do
-    tv <- freshTyVar Star
-    addType (v :>: toScheme tv)
-    return tv
+    tyv <- freshTyVar Star
+    addType (v :>: toScheme tyv)
+    return tyv
 tyPattern (LitPat lit) = return (tyLit lit)
-tyPattern (Pat con pts) = do
-    conTM <- lookupTypes con
-    case conTM of
-        Nothing -> throwError (UnboundConstructor con)
+tyPattern (Pat c pts) = do
+    tyM <- lookupTypes c
+    case tyM of
+        Nothing -> throwError (UnboundConstructor c)
         Just sc -> do
-            ts <- mapM tyPattern pts
-            tv <- freshTyVar Star
+            tys <- mapM tyPattern pts
+            tyv <- freshTyVar Star
             ty <- freshen sc
-            unify ty (foldr (-->) tv ts)
-            applySubst tv
+            unify ty (foldr (-->) tyv tys)
+            applySubst tyv
 
 tyLit :: Literal -> Type
 tyLit (IntLit _) = intCon
 tyLit (RealLit _) = realCon
 
 getTSKinds :: MonadError TypeError m => TypeSig -> m [(Id, Kind)]
-getTSKinds t =
-    forM vks $ \l ->
-        case l of
-            ((v, k1) : _) -> case filter (/= k1) (map snd l) of
-                []       -> return (v, k1)
-                (k2 : _) -> throwError $ MismatchingKinds v k1 k2
+getTSKinds ts =
+    forM varsKinds $ \varKinds ->
+        case varKinds of
+            ((tyv, k1) : _) -> case filter (/= k1) (map snd varKinds) of
+                []       -> return (tyv, k1)
+                (k2 : _) -> throwError $ MismatchingKinds tyv k1 k2
             _ -> error "TI.TypeInfer.getTSKinds: empty list, something went wrong"
   where
-    vks :: [[(Id, Kind)]]
-    vks =  groupBy ((==) `on` fst) $ sortBy (comparing fst) (go Star t)
+    varsKinds :: [[(Id, Kind)]]
+    varsKinds =  groupBy ((==) `on` fst) $ sortBy (comparing fst) (go Star ts)
 
     go :: Kind -> TypeSig -> [(Id, Kind)]
-    go k (TyVar v) = [(v, k)]
-    go k (TyApp l r) = go (Star :*> k) l ++ go Star r
+    go k (TyVar tyv) = [(tyv, k)]
+    go k (TyApp ts1 ts2) = go (Star :*> k) ts1 ++ go Star ts2
     go _ _ = []
 
 tyDataDecl :: MonadInfer m => Id -> [Id] -> DataBody -> m ()
-tyDataDecl con vars body = do
-    let res = foldl TyApp (TyCon con) $ map TyVar vars
-    (ks, tss) <- tyDataBody res vars [] [] body
-    let ks' = flip map vars $ \v -> case lookup v ks of
+tyDataDecl tyc tyvs body = do
+    let ts = foldl TyApp (TyCon tyc) $ map TyVar tyvs
+    (ks, tss) <- tyDataBody ts tyvs [] [] body
+    let ks' = flip map tyvs $ \v -> case lookup v ks of
                   Nothing -> Star
                   Just k' -> k'
         k = foldl (:*>) Star ks'
     ksCtx <- getKinds
-    putKinds ((con :>: k) : ksCtx)
+    putKinds ((tyc :>: k) : ksCtx)
 
-    forM_ tss $ \(c, ts) -> do
-        ty <- tyToTs ks ts
+    forM_ tss $ \(tyc2, ts2) -> do
+        ty <- tyToTs ks ts2
         ctx <- getTypes
-        putTypes ((c :>: quantify (fv ty) ty) : ctx)
+        putTypes ((tyc2 :>: quantify (fv ty) ty) : ctx)
 
-tyToTs :: MonadInfer m => [(Id, Kind)] -> TypeSig -> m Type
-tyToTs _ (TyCon c) = do
+tyToTs :: MonadInfer m
+          => [(Id, Kind)]        -- * The type variables kinds
+          -> TypeSig -> m Type
+tyToTs _ (TyCon tyc) = do
     ksCtx <- getKinds
-    case lookupAss c ksCtx of
-        Nothing -> throwError $ UnboundTypeConstructor c
-        Just k  -> return $ TyCon (c, k)
-tyToTs ks (TyVar v) = case lookup v ks of
+    case lookupAss tyc ksCtx of
+        Nothing -> throwError $ UnboundTypeConstructor tyc
+        Just k  -> return $ TyCon (tyc, k)
+tyToTs ks (TyVar tyv) = case lookup tyv ks of
     Nothing -> error "TypeInfer.tyDataBody: something went wrong, var lookup"
-    Just k  -> return $ TyVar (v, k)
-tyToTs ks (TyApp l r) = liftM2 TyApp (tyToTs ks l) (tyToTs ks r)
+    Just k  -> return $ TyVar (tyv, k)
+tyToTs ks (TyApp ty1 ty2) = liftM2 TyApp (tyToTs ks ty1) (tyToTs ks ty2)
 tyToTs _ (TyGen i) = return $ TyGen i
 
 tyDataBody :: MonadInfer m
-              => TypeSig -> [Id] -> [(Id, Kind)] -> [(Id, TypeSig)]
-              -> DataBody -> m ([(Id, Kind)], [(Id, TypeSig)])
+              => TypeSig         -- * The type signature of the type constructor
+              -> [Id]            -- * The type variables of the type constructor
+              -> [(Id, Kind)]    -- * The kinds of the type variables up to now
+                                --   (first result)
+              -> [(Id, TypeSig)] -- * The type signatures of the data constructors
+                                --   up to now (second result)
+              -> DataBody
+              -> m ([(Id, Kind)], [(Id, TypeSig)])
 tyDataBody _ _ ks tss [] = return (ks, tss)
-tyDataBody res vars ks tss' ((con, tss) : body) = do
-    let fn l = TyApp (TyApp (TyCon "(->)") l)
-        ts = let x = foldr fn res tss in trace (show x) x
+tyDataBody tsOrig tyvs ks tss' ((c, tss) : body) = do
+    let ts = foldr (\ty -> TyApp (TyApp (TyCon "(->)") ty)) tsOrig tss
     ks' <- getTSKinds ts
-    forM_ ks' $ \(v, k) -> case lookup v ks of
-        Nothing -> if v `elem` vars then return ()
-                   else throwError $ UnboundTypeVar v
+    forM_ ks' $ \(tyv, k) -> case lookup tyv ks of
+        Nothing -> if tyv `elem` tyvs then return ()
+                   else throwError $ UnboundTypeVar tyv
         Just k' -> if k == k' then return ()
-                   else throwError $ MismatchingKinds v k k'
+                   else throwError $ MismatchingKinds tyv k k'
     let ks'' = ks `union` ks'
-    tyDataBody res vars ks'' ((con, ts) : tss') body
+    tyDataBody tsOrig tyvs ks'' ((c, ts) : tss') body

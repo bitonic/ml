@@ -3,7 +3,6 @@
 module TI.TypesTypes
        ( Kind (..)
        , Type
-       , TypeS (..)
        , TyVar
        , TyCon
        , (-->)
@@ -27,6 +26,7 @@ module TI.TypesTypes
        , prettyAssumps
        , pType
        , pScheme
+       , pKind
        ) where
 
 import Control.Monad.Error
@@ -34,6 +34,8 @@ import Data.List (union, nub)
 import Text.PrettyPrint
 
 import Syntax
+
+-------------------------------------------------------------------------------
 
 infixr 3 :*>
 data Kind = Star
@@ -47,50 +49,50 @@ type TyCon = (Id, Kind)
 
 infixr 3 -->
 (-->) :: Type -> Type -> Type
-l --> r = TyApp (TyApp (TyCon ("(->)", Star :*> Star :*> Star)) l) r
+ty1 --> ty2 = TyApp (TyApp (TyCon ("(->)", Star :*> Star :*> Star)) ty1) ty2
 
-class HasKind t where
-    kind :: t -> Kind
+class HasKind ty where
+    kind :: ty -> Kind
 
 instance HasKind (Id, Kind) where
     kind = snd
 
 instance HasKind Type where
-    kind (TyVar tv) = kind tv
-    kind (TyCon tc) = kind tc
-    kind (TyApp t _) = case kind t of
+    kind (TyVar tyv) = kind tyv
+    kind (TyCon tyc) = kind tyc
+    kind (TyApp ty _) = case kind ty of
         _ :*> k -> k
         _        -> error "TypesTypes.kind: malformed type (mismatching kind)"
     kind _ = error "TypesTypes.kind: TyGen"
 
 type Subst = [(TyVar, Type)]
 
-class Types t where
-    apply :: Subst -> t -> t
-    fv    :: t -> [TyVar]
+class Types ty where
+    apply :: Subst -> ty -> ty
+    fv    :: ty -> [TyVar]
 
 instance Types Type where
-    apply s (TyVar tv) = case lookup tv s of
-        Just t  -> t
-        Nothing -> TyVar tv
-    apply s (TyApp l r) = TyApp (apply s l) (apply s r)
-    apply _ t = t
+    apply sub (TyVar tyv) = case lookup tyv sub of
+        Just ty -> ty
+        Nothing -> TyVar tyv
+    apply sub (TyApp ty1 ty2) = TyApp (apply sub ty1) (apply sub ty2)
+    apply _ ty = ty
 
-    fv (TyVar tv) = [tv]
-    fv (TyApp l r) = fv l `union` fv r
+    fv (TyVar tyv) = [tyv]
+    fv (TyApp ty1 ty2) = fv ty1 `union` fv ty2
     fv _ = []
 
-instance Types a => Types [a] where
-    apply s = map (apply s)
+instance Types ty => Types [ty] where
+    apply sub = map (apply sub)
 
     fv = nub . concatMap fv
 
 (+->) :: TyVar -> Type -> Subst
-tv +-> t = [(tv, t)]
+tyv +-> ty = [(tyv, ty)]
 
 infixr 4 @@
 (@@) :: Subst -> Subst -> Subst
-s1 @@ s2 = [(tv, apply s1 t) | (tv, t) <- s2] ++ s1
+sub1 @@ sub2 = [(tyv, apply sub1 ty) | (tyv, ty) <- sub2] ++ sub1
 
 data TypeError = TypeError String
                | UnboundVar Id
@@ -104,52 +106,54 @@ instance Error TypeError where
     strMsg = TypeError
 
 mgu :: MonadError TypeError m => Type -> Type -> m Subst
-mgu (TyApp l1 r1) (TyApp l2 r2) = do s1 <- mgu l1 l2
-                                     s2 <- mgu (apply s1 r1) (apply s1 r2)
-                                     return (s2 @@ s1)
-mgu (TyVar tv) t = varBind tv t
-mgu t (TyVar tv) = varBind tv t
-mgu (TyCon tc1) (TyCon tc2) | tc1 == tc2 = return []
+mgu (TyApp tyl1 tyr1) (TyApp tyl2 tyr2) = do
+    sub1 <- mgu tyl1 tyl2
+    sub2 <- mgu (apply sub1 tyr1) (apply sub1 tyr2)
+    return (sub2 @@ sub1)
+mgu (TyVar tyv) ty = varBind tyv ty
+mgu ty (TyVar tyv) = varBind tyv ty
+mgu (TyCon tyc1) (TyCon tyc2) | tyc1 == tyc2 = return []
 mgu _  _ = throwError (strMsg "Types do not unify")
 
 varBind :: MonadError TypeError m => TyVar -> Type -> m Subst
-varBind tv t | TyVar tv == t = return []
-             | tv `elem` fv t = throwError (strMsg "Occurs check fails")
-             | kind tv /= kind t = throwError (strMsg "Different kinds")
-             | otherwise = return (tv +-> t)
+varBind tyv ty
+    | TyVar tyv == ty = return []
+    | tyv `elem` fv ty = throwError (strMsg "Occurs check fails")
+    | kind tyv /= kind ty = throwError (strMsg "Different kinds")
+    | otherwise = return (tyv +-> ty)
 
 data Scheme = Forall [Kind] Type
             deriving (Eq, Show)
 
 instance Types Scheme where
-    apply s (Forall ks t) = Forall ks (apply s t)
+    apply sub (Forall ks ty) = Forall ks (apply sub ty)
 
-    fv (Forall _ t) = fv t
+    fv (Forall _ ty) = fv ty
 
 toScheme :: Type -> Scheme
 toScheme = Forall []
 
 quantify :: [TyVar] -> Type -> Scheme
-quantify tvs ty = Forall ks (apply s ty)
+quantify tyvs ty = Forall ks (apply sub ty)
   where
-    tvs' = filter (`elem` fv ty) tvs
-    s = zip tvs' (map TyGen [0..])
-    ks = map kind tvs'
+    tyvs' = filter (`elem` fv ty) tyvs
+    sub = zip tyvs' (map TyGen [0..])
+    ks = map kind tyvs'
 
-class Instantiate t where
-    inst :: [Type] -> t -> t
+class Instantiate ty where
+    inst :: [Type] -> ty -> ty
 
 instance Instantiate Type where
-    inst ts (TyGen i) | length ts > i = ts !! i
-                      | otherwise = error "TypesTypes.inst: TyGen out of bounds"
-    inst ts (TyApp l r) = TyApp (inst ts l) (inst ts r)
-    inst _ t = t
+    inst tys (TyGen i) | length tys > i = tys !! i
+                       | otherwise = error "TypesTypes.inst: TyGen out of bounds"
+    inst tys (TyApp ty1 ty2) = TyApp (inst tys ty1) (inst tys ty2)
+    inst _ ty = ty
 
 data Assump a = Id :>: a
               deriving (Eq, Show)
 
-instance Types t => Types (Assump t) where
-    apply s (v :>: sc) = v :>: apply s sc
+instance Types ty => Types (Assump ty) where
+    apply sub (tyv :>: sc) = tyv :>: apply sub sc
     fv (_ :>: sc) = fv sc
 
 lookupAss :: Id -> [Assump b] -> Maybe b
@@ -161,15 +165,16 @@ prettyScheme :: Scheme -> String
 prettyScheme = render . pScheme
 
 prettyType :: Type -> String
-prettyType = render . p
-  where
-    p (TyApp (TyApp (TyCon ("(->)", _)) l) r) =
-        parensType p l <+> "->" <+> p r
-    p (TyApp (TyApp (TyCon ("(,)", _)) l) r) =
-        "(" <> p l <> "," <+> p r <> ")"
-    p (TyApp (TyApp (TyApp (TyCon ("(,,)", _)) l) m) r) =
-        "(" <> p l <> "," <+> p m <> "," <+> p r <> ")"
-    p t = pType (text . fst) t
+prettyType = render . pType
+
+pType :: Type -> Doc
+pType (TyApp (TyApp (TyCon ("(->)", _)) ty1) ty2) =
+    pParensTypeS pType ty1 <+> "->" <+> pType ty2
+pType (TyApp (TyApp (TyCon ("(,)", _)) ty1) ty2) =
+    "(" <> pType ty1 <> "," <+> pType ty2 <> ")"
+pType (TyApp (TyApp (TyApp (TyCon ("(,,)", _)) ty1) ty2) ty3) =
+    "(" <> pType ty1 <> "," <+> pType ty2 <> "," <+> pType ty3 <> ")"
+pType ty = pTypeS (text . fst) ty
 
 prettyAssumps :: (a -> Doc) -> [Assump a] -> String
 prettyAssumps f = render . vcat . map (pAssump f)
@@ -178,4 +183,11 @@ pAssump :: (a -> Doc) -> Assump a -> Doc
 pAssump f (x :>: ty) = text x <+> ":" <+> f ty
 
 pScheme :: Scheme -> Doc
-pScheme (Forall _ ty) = pType (text . fst) ty
+pScheme (Forall _ ty) = pType ty
+
+pKind :: Kind -> Doc
+pKind Star = "*"
+pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
+  where
+    p Star = "*"
+    p k = parens (pKind k)

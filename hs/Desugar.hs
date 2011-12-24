@@ -11,7 +11,7 @@ desugar decls = evalFresh (mapM dDecl decls) (0 :: Integer)
 
 dDecl :: (MonadFresh c m, Show c) => Decl FullTerm -> m (Decl DTerm)
 dDecl (ValDecl v t) = liftM (ValDecl v) (dTerm t)
-dDecl (DataDecl con tvs body) = return (DataDecl con tvs body)
+dDecl (DataDecl tyc tyvs body) = return (DataDecl tyc tyvs body)
 
 freshVar :: (Show c, MonadFresh c m) => m Id
 freshVar = liftM (("_v" ++) . show) fresh
@@ -25,17 +25,17 @@ dTerm (Abs pts t) = go pts
         _ -> do v <- freshVar
                 liftM (Abs v) $ dTerm (Case (Var v) [(pt, Abs pts' t)])
 dTerm (Let pt t1 t2) = do
-    dt1 <- dTerm t1
-    dt2 <- dTerm t2
+    t1' <- dTerm t1
+    t2' <- dTerm t2
     case pt of
-        VarPat v -> return (Let v dt1 dt2)
+        VarPat v -> return (Let v t1' t2')
         _ -> do v <- freshVar
-                liftM (Let v dt1) (dTerm (Case (Var v) [(VarPat v, t2)]))
-dTerm (Case term cases) = liftM2 Case (dTerm term) (mapM dCase cases)
+                liftM (Let v t1') (dTerm (Case (Var v) [(VarPat v, t2)]))
+dTerm (Case t' cases) = liftM2 Case (dTerm t') (mapM dCase cases)
   where
     dCase (pt, t) = liftM (pt,) (dTerm t)
 dTerm (Var v) = return (Var v)
 dTerm (Con c) = return (Con c)
 dTerm (Fix f t) = liftM (Fix f) (dTerm t)
 dTerm (Literal lit) = return (Literal lit)
-dTerm (App l r) = liftM2 App (dTerm l) (dTerm r)
+dTerm (App t1 t2) = liftM2 App (dTerm t1) (dTerm t2)

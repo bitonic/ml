@@ -55,7 +55,6 @@ data Term fn lt = Var Id
                 | Abs fn (Term fn lt)
                 | App (Term fn lt) (Term fn lt)
                 | Let lt (Term fn lt) (Term fn lt)
-                | Fix Id (Term fn lt)
                 | Literal Literal
                 | Case (Term fn lt) [(Pattern, (Term fn lt))]
                 deriving (Show, Eq)
@@ -95,7 +94,6 @@ pTerm f l (App t1 t2) = pTerm f l t1 <+> parensTerm f l t2
 pTerm f l (Let pt t1 t2) = sep [ "let" <+> l pt <+> equals <+> pTerm f l t1 <+> "in"
                                , pTerm f l t2
                                ]
-pTerm f l (Fix g t) = "fix" <+> text g <+> "->" <+> pTerm f l t
 pTerm _ _ (Literal lit) = pLiteral lit
 pTerm f l (Case t cases) = ("case" <+> pTerm f l t <+> "of") $+$
                            nest 4 (pCases (pTerm f l) cases)
@@ -104,7 +102,6 @@ parensTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
 parensTerm f l t = case t of
     Abs _ _ -> parens d
     Let _ _ _ -> parens d
-    Fix _ _ -> parens d
     App _ _ -> parens d
     _ -> d
   where
@@ -116,8 +113,8 @@ pPattern (Pat c pts) = parens (text c <+> hsep (map pPattern pts))
 pPattern (LitPat lit) = pLiteral lit
 
 pLiteral :: Literal -> Doc
-pLiteral (IntLit i) = text (show i)
-pLiteral (RealLit r) = text (show r)
+pLiteral (IntLit i) = text i
+pLiteral (RealLit r) = text r
 
 pCases :: (a -> Doc) -> [(Pattern, a)] -> Doc
 pCases tf (case' : cases) = (space <+> p case') $$

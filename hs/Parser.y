@@ -13,7 +13,6 @@ import Syntax
 %token
   let      { LET }
   in       { IN }
-  fix      { FIX }
   '='      { EQUALS }
   '('      { LPAREN }
   ')'      { RPAREN }
@@ -41,7 +40,6 @@ Decl : let var '=' Term               { ValDecl $2 $4 }
 Term : Atom                         { $1 }
      | 'λ' Patterns "->" Term       { Abs (reverse $2) $4 }
      | let Pattern '=' Term in Term { Let $2 $4 $6 }
-     | fix var "->" Term            { Fix $2 $4 }
      | case Term of Cases           { Case $2 (reverse $4) }
      | Term Atom                    { App $1 $2 }
 

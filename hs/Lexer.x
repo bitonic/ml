@@ -20,7 +20,6 @@ tokens :-
   "--".*;
   let                { const LET }
   in                 { const IN }
-  fix                { const FIX}
   \=                 { const EQUALS }
   \(                 { const LPAREN }
   \)                 { const RPAREN }
@@ -42,7 +41,6 @@ tokens :-
 
 data Token = LET
            | IN
-           | FIX
            | VAR Id
            | CON Id
            | EQUALS

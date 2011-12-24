@@ -18,12 +18,8 @@ inferType decls' =
     evalFresh (runErrorT (go baseTypes baseKinds decls')) (0 :: Integer)
   where
     go tys ks [] = return (reverse tys, reverse ks)
-    go tys ks (ValDecl v t : decls) = do
-        ty <- evalStateT (tyTerm t) (InferState [] tys ks)
-        go ((v :>: quantify (fv ty) ty) : tys) ks decls
-    go tys ks (DataDecl tyc tyvs body : decls) = do
-        InferState _ tys' ks' <-
-            execStateT (tyDataDecl tyc tyvs body) (InferState [] tys ks)
+    go tys ks (decl : decls) = do
+        InferState _ tys' ks' <- execStateT (tyDecl decl) (InferState [] tys ks)
         go tys' ks' decls
 
 class (MonadFresh Integer m, MonadError TypeError m) => MonadInfer m where
@@ -78,6 +74,17 @@ freshTyVar k = liftM (\i -> TyVar ("_ty" ++ show i, k)) fresh
 freshen :: (Show c, MonadFresh c m) => Scheme -> m Type
 freshen (Forall ks t) = liftM (`inst` t) (mapM freshTyVar ks)
 
+tyDecl :: MonadInfer m => Decl DTerm -> m ()
+tyDecl (ValDecl v t) = do
+    tys <- getTypes
+    tyv <- freshTyVar Star
+    addType (v :>: toScheme tyv)
+    ty <- tyTerm t
+    (`unify` ty) =<< applySubst tyv
+    ty' <- applySubst ty
+    putTypes ((v :>: toScheme ty') : tys)
+tyDecl (DataDecl tyc tyvs body) = tyDataDecl tyc tyvs body
+
 tyTerm :: MonadInfer m => DTerm -> m Type
 tyTerm (Var v) = do
     tyM <- lookupTypes v
@@ -108,12 +115,6 @@ tyTerm (Let v t1 t2) = do
     let ty' = quantify (fv ty \\ ctxFv) ty
     addType (v :>: ty')
     tyTerm t2
-tyTerm (Fix v t) = do
-    tyv <- freshTyVar Star
-    addType (v :>: toScheme tyv)
-    ty <- tyTerm t
-    (`unify` ty) =<< applySubst tyv
-    applySubst ty
 tyTerm (Literal l) = return (tyLit l)
 tyTerm (Case t cases) = do
     ty <- tyTerm t

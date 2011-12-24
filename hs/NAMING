@@ -1,0 +1,22 @@
+Naming conventions:
+t : Term
+ts : TypeSig
+pt : Pattern
+lit : Literal
+decl : Decl
+v : Id, referring to term variable
+c : Id, referring to data constructor
+ty : Type
+tyv : Id, referring to type variable
+tyc : Id, referring to type constructor
+k : Kind
+sub : Subst
+sc : Scheme
+tyass : Assump Type
+kass : Assump Kind
+
+For lists, add 's' at the end.
+
+pSomething : Something -> Doc
+dSomething : FullTerm -> DTerm
+tiSomething : Something -> Type

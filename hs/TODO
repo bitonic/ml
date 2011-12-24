@@ -1,0 +1,9 @@
+
+* Language/Type checker
+** TODO Move the kinds of TyVar and TyCon in the monad
+** TODO Explicit types
+** TODO Type classes
+** TODO Implicit bindings (mutual recursion)
+** TODO Records (maybe)
+* CodeGen
+** TODO Everything

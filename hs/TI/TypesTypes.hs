@@ -25,6 +25,8 @@ module TI.TypesTypes
        , prettyScheme
        , prettyType
        , prettyAssumps
+       , pType
+       , pScheme
        ) where
 
 import Control.Monad.Error
@@ -34,7 +36,8 @@ import Text.PrettyPrint
 import Syntax
 
 infixr 3 :*>
-data Kind = Star | Kind :*> Kind
+data Kind = Star
+          | Kind :*> Kind
           deriving (Eq, Show)
 
 type Type = TypeS (Id, Kind)
@@ -92,6 +95,9 @@ s1 @@ s2 = [(tv, apply s1 t) | (tv, t) <- s2] ++ s1
 data TypeError = TypeError String
                | UnboundVar Id
                | UnboundConstructor Id
+               | MismatchingKinds Id Kind Kind
+               | UnboundTypeVar Id
+               | UnboundTypeConstructor Id
                deriving (Show, Eq)
 
 instance Error TypeError where

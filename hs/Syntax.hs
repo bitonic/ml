@@ -19,10 +19,13 @@ module Syntax
        , prettyML
        , prettyDesugar
        , pType
+       , pTypeSig
        , parensType
        ) where
 
 import Text.PrettyPrint
+
+-------------------------------------------------------------------------------
 
 type Id = String
 
@@ -57,7 +60,7 @@ data Term fn lt = Var Id
                 | Case (Term fn lt) [(Pattern, (Term fn lt))]
                 deriving (Show, Eq)
 
-type DataBody = [(Id, TypeSig)]
+type DataBody = [(Id, [TypeSig])]
 
 -------------------------------------------------------------------------------
 
@@ -129,9 +132,9 @@ pDecl _ _ (DataDecl con tyvars dbody)
       nest 4 (pDataBody dbody)
 
 pDataBody :: DataBody -> Doc
-pDataBody (d : ds) = "  " <> p d $$ vcat (map (\d' -> "|" <+> p d') ds)
+pDataBody (d : ds) = space <+> p d $$ vcat (map (\d' -> "|" <+> p d') ds)
   where
-    p (s, t) = text s <+> ":" <+> pTypeSig t
+    p (s, ts) = text s <+> hsep (map pTypeSig ts)
 pDataBody _ = "Parser.pDataBody: Received 0 options"
 
 pTypeSig :: TypeSig -> Doc

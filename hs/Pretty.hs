@@ -2,20 +2,19 @@
 module Pretty
        ( prettyML
        , prettyDesugar
-       , pTypeS
        , pType
-       , pParensTypeS
+       , pParensType
 
        , prettyScheme
        , prettyType
        , prettyAssumps
        , prettySubst
-       , pType
        , pScheme
        , pKind
        ) where
 
 import Text.PrettyPrint
+import qualified Data.Map as Map
 
 import Syntax
 import TI.TypesTypes
@@ -79,14 +78,14 @@ pDataBody _ = "Parser.pDataBody: Received 0 options"
 
 pType :: Type -> Doc
 pType (TyApp (TyApp (TyCon "(->)") ts1) ts2) =
-    pParensTypeS pType ts1 <+> "->" <+> pType ts2
+    pParensType ts1 <+> "->" <+> pType ts2
 pType (TyApp (TyApp (TyCon "(,)") ts1) ts2) =
     "(" <> pType ts1 <> "," <+> pType ts2 <> ")"
 pType (TyApp (TyApp (TyApp (TyCon "(,,)") ts1) ts2) ts3) =
     "(" <> pType ts1 <> "," <+> pType ts2 <> "," <+> pType ts3 <> ")"
 pType (TyVar tyv) = text tyv
 pType (TyCon tyc) = text tyc
-pType (TyApp ty1 ty2) = pParensTypeS ty1 <+> pTypeS ty2
+pType (TyApp ty1 ty2) = pParensType ty1 <+> pType ty2
 pType (TyGen i) = text (show i)
 
 pParensType :: Type -> Doc
@@ -108,7 +107,7 @@ prettyAssumps :: (a -> Doc) -> [Assump a] -> String
 prettyAssumps f = render . vcat . map (pAssump f)
 
 pAssump :: (a -> Doc) -> Assump a -> Doc
-pAssump f (x :>: ty) = text x <+> ":" <+> f ty
+pAssump f m = vcat $ map (\(x, ty) -> text x <+> ":" <+> f ty) (Map.toList m)
 
 pScheme :: Scheme -> Doc
 pScheme (Forall _ ty) = pType ty
@@ -124,7 +123,7 @@ pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
     p k = parens (pKind k)
 
 prettySubst :: Subst -> String
-prettySubst = render . vcat . map (\(tyv, ty) -> text (fst tyv) <+> "=>" <+> pType ty)
+prettySubst = render . vcat . map (\(tyv, ty) -> text tyv <+> "=>" <+> pType ty)
 
 instance Show TypeError where
     show (TypeError s) = "TypeError: " ++ s

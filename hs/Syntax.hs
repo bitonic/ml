@@ -1,4 +1,3 @@
-{-# LANGUAGE OverloadedStrings #-}
 module Syntax
        ( Id
        , Decl (..)
@@ -16,8 +15,6 @@ module Syntax
        , tupleTerm
          -- * Pretty printing
        ) where
-
-import Text.PrettyPrint
 
 -------------------------------------------------------------------------------
 

@@ -3,7 +3,7 @@ module Pretty
        ( prettyML
        , prettyDesugar
        , pTypeS
-       , pTypeSig
+       , pType
        , pParensTypeS
 
        , prettyScheme
@@ -74,30 +74,27 @@ pDecl _ _ (DataDecl c tyvs dbody)
 pDataBody :: DataBody -> Doc
 pDataBody (opt : opts) = space <+> p opt $$ vcat (map (\opt' -> "|" <+> p opt') opts)
   where
-    p (c, tss) = text c <+> hsep (map pTypeSig tss)
+    p (c, tss) = text c <+> hsep (map pType tss)
 pDataBody _ = "Parser.pDataBody: Received 0 options"
 
-pTypeSig :: TypeSig -> Doc
-pTypeSig (TyApp (TyApp (TyCon "(->)") ts1) ts2) =
-    pParensTypeS pTypeSig ts1 <+> "->" <+> pTypeSig ts2
-pTypeSig (TyApp (TyApp (TyCon "(,)") ts1) ts2) =
-    "(" <> pTypeSig ts1 <> "," <+> pTypeSig ts2 <> ")"
-pTypeSig (TyApp (TyApp (TyApp (TyCon "(,,)") ts1) ts2) ts3) =
-    "(" <> pTypeSig ts1 <> "," <+> pTypeSig ts2 <> "," <+> pTypeSig ts3 <> ")"
-pTypeSig ts = pTypeS text ts
+pType :: Type -> Doc
+pType (TyApp (TyApp (TyCon "(->)") ts1) ts2) =
+    pParensTypeS pType ts1 <+> "->" <+> pType ts2
+pType (TyApp (TyApp (TyCon "(,)") ts1) ts2) =
+    "(" <> pType ts1 <> "," <+> pType ts2 <> ")"
+pType (TyApp (TyApp (TyApp (TyCon "(,,)") ts1) ts2) ts3) =
+    "(" <> pType ts1 <> "," <+> pType ts2 <> "," <+> pType ts3 <> ")"
+pType (TyVar tyv) = text tyv
+pType (TyCon tyc) = text tyc
+pType (TyApp ty1 ty2) = pParensTypeS ty1 <+> pTypeS ty2
+pType (TyGen i) = text (show i)
 
-pTypeS :: (t -> Doc) -> TypeS t -> Doc
-pTypeS f (TyVar tyv) = f tyv
-pTypeS f (TyCon tyc) = f tyc
-pTypeS f (TyApp ty1 ty2) = pParensTypeS (pTypeS f) ty1 <+> pTypeS f ty2
-pTypeS _ (TyGen i) = text (show i)
-
-pParensTypeS :: (TypeS t -> Doc) -> TypeS t -> Doc
-pParensTypeS f ty = case ty of
+pParensType :: Type -> Doc
+pParensType ty = case ty of
     TyApp _ _ -> parens d
     _ -> d
   where
-    d = f ty
+    d = pType ty
 
 -------------------------------------------------------------------------------
 
@@ -106,15 +103,6 @@ prettyScheme = render . pScheme
 
 prettyType :: Type -> String
 prettyType = render . pType
-
-pType :: Type -> Doc
-pType (TyApp (TyApp (TyCon ("(->)", _)) ty1) ty2) =
-    pParensTypeS pType ty1 <+> "->" <+> pType ty2
-pType (TyApp (TyApp (TyCon ("(,)", _)) ty1) ty2) =
-    "(" <> pType ty1 <> "," <+> pType ty2 <> ")"
-pType (TyApp (TyApp (TyApp (TyCon ("(,,)", _)) ty1) ty2) ty3) =
-    "(" <> pType ty1 <> "," <+> pType ty2 <> "," <+> pType ty3 <> ")"
-pType ty = pTypeS (text . fst) ty
 
 prettyAssumps :: (a -> Doc) -> [Assump a] -> String
 prettyAssumps f = render . vcat . map (pAssump f)

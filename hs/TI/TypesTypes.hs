@@ -1,10 +1,7 @@
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, OverloadedStrings,
-             TypeSynonymInstances #-}
+             TypeSynonymInstances, ScopedTypeVariables #-}
 module TI.TypesTypes
        ( Kind (..)
-       , Type
-       , TyVar
-       , TyCon
        , (-->)
        , HasKind (..)
        , Subst
@@ -18,46 +15,34 @@ module TI.TypesTypes
        , toScheme
        , quantify
        , Instantiate (..)
-       , Assump (..)
-       , lookupAss
+       , Assump
+       , lookupVar
+       , lookupCon
+       , lookupTyVar
+       , lookupTyCon
+       , MonadInfer (..)
+       , TyVar
+       , TyCon
        ) where
 
 import Control.Monad.Error
 import Data.List (union, nub)
+import Data.Map (Map)
+import qualified Data.Map as Map
 
+import Fresh
 import Syntax
 
 -------------------------------------------------------------------------------
 
-infixr 3 :*>
-data Kind = Star
-          | Kind :*> Kind
-          deriving (Eq, Show)
+type TyVar = Id
+type TyCon = Id
 
-type Type = TypeS (Id, Kind)
-
-type TyVar = (Id, Kind)
-type TyCon = (Id, Kind)
+type Subst = [(TyVar, Type)]
 
 infixr 3 -->
 (-->) :: Type -> Type -> Type
-ty1 --> ty2 = TyApp (TyApp (TyCon ("(->)", Star :*> Star :*> Star)) ty1) ty2
-
-class HasKind ty where
-    kind :: ty -> Kind
-
-instance HasKind (Id, Kind) where
-    kind = snd
-
-instance HasKind Type where
-    kind (TyVar tyv) = kind tyv
-    kind (TyCon tyc) = kind tyc
-    kind (TyApp ty _) = case kind ty of
-        _ :*> k -> k
-        _        -> error "TypesTypes.kind: malformed type (mismatching kind)"
-    kind _ = error "TypesTypes.kind: TyGen"
-
-type Subst = [(TyVar, Type)]
+ty1 --> ty2 = TyApp (TyApp (TyCon "(->)") ty1) ty2
 
 class Types ty where
     apply :: Subst -> ty -> ty
@@ -86,6 +71,60 @@ infixr 4 @@
 (@@) :: Subst -> Subst -> Subst
 sub1 @@ sub2 = [(tyv, apply sub1 ty) | (tyv, ty) <- sub2] ++ sub1
 
+-------------------------------------------------------------------------------
+
+type Assump a = Map Id a
+
+instance Types ty => Types (Assump ty) where
+    apply sub = Map.map (apply sub)
+
+    fv = fv . map snd . Map.toList
+
+-------------------------------------------------------------------------------
+
+data Scheme = Forall [Kind] Type
+            deriving (Eq, Show)
+
+toScheme :: Type -> Scheme
+toScheme = Forall []
+
+instance Types Scheme where
+    apply sub (Forall ks ty) = Forall ks $ apply sub ty
+
+    fv (Forall _ ty) = fv ty
+
+quantify :: MonadInfer m => [Id] -> Type -> m Scheme
+quantify tyvs ty = do
+    ks <- mapM kind $ map TyVar tyvs'
+    return $ Forall ks (apply sub ty)
+  where
+    tyvs' = filter (`elem` fv ty) tyvs
+    sub = zip tyvs' (map TyGen [0..])
+
+class Instantiate ty where
+    inst :: [Type] -> ty -> ty
+
+instance Instantiate Type where
+    inst tys (TyGen i) | length tys > i = tys !! i
+                       | otherwise = error "TypesTypes.inst: TyGen out of bounds"
+    inst tys (TyApp ty1 ty2) = TyApp (inst tys ty1) (inst tys ty2)
+    inst _ ty = ty
+
+
+-------------------------------------------------------------------------------
+
+class (MonadFresh Integer m, MonadError TypeError m) => MonadInfer m where
+    applySubst :: Types ty => ty -> m ty
+    extSubst   :: Subst -> m ()
+
+    getTypes   :: m (Assump Scheme)
+    putTypes   :: (Assump Scheme) -> m ()
+
+    getKinds   :: m (Assump Kind)
+    putKinds   :: (Assump Kind) -> m ()
+
+    unify      :: Type -> Type -> m ()
+
 data TypeError = TypeError String
                | UnboundVar Id
                | UnboundConstructor Id
@@ -98,7 +137,49 @@ data TypeError = TypeError String
 instance Error TypeError where
     strMsg = TypeError
 
-mgu :: MonadError TypeError m => Type -> Type -> m Subst
+lookupInfer :: forall m a. MonadInfer m => m (Assump a) -> (Id -> TypeError) -> Id -> m a
+lookupInfer m f v = do
+   xM <- liftM (Map.lookup v) m
+   case xM of
+       Nothing -> throwError $ f v
+       Just x  -> return x
+
+lookupVar :: MonadInfer m => Id -> m Scheme
+lookupVar = lookupInfer getTypes UnboundVar
+
+lookupCon :: MonadInfer m => Id -> m Scheme
+lookupCon = lookupInfer getTypes UnboundConstructor
+
+lookupTyVar :: MonadInfer m => Id -> m Kind
+lookupTyVar = lookupInfer getKinds UnboundTypeVar
+
+lookupTyCon :: MonadInfer m => Id -> m Kind
+lookupTyCon = lookupInfer getKinds UnboundTypeConstructor
+
+-------------------------------------------------------------------------------
+
+infixr 3 :*>
+data Kind = Star
+          | Kind :*> Kind
+          deriving (Eq, Show)
+
+class HasKind ty where
+    kind :: MonadInfer m => ty -> m Kind
+
+instance HasKind Type where
+    kind (TyVar tyv) = lookupTyVar tyv
+    kind (TyCon tyc) = lookupTyCon tyc
+    kind (TyApp ty _) = do
+        k' <- kind ty
+        case k' of
+            _ :*> k -> return k
+            _       -> error "TypesTypes.kind: malformed type (mismatching kind)"
+    kind _ = error "TypesTypes.kind: TyGen"
+
+instance HasKind Scheme where
+    kind (Forall _ ty) = kind ty
+
+mgu :: MonadInfer m => Type -> Type -> m Subst
 mgu (TyApp tyl1 tyr1) (TyApp tyl2 tyr2) = do
     sub1 <- mgu tyl1 tyl2
     sub2 <- mgu (apply sub1 tyr1) (apply sub1 tyr2)
@@ -108,46 +189,13 @@ mgu ty (TyVar tyv) = varBind tyv ty
 mgu (TyCon tyc1) (TyCon tyc2) | tyc1 == tyc2 = return []
 mgu _  _ = throwError (strMsg "Types do not unify")
 
-varBind :: MonadError TypeError m => TyVar -> Type -> m Subst
+varBind :: MonadInfer m => TyVar -> Type -> m Subst
 varBind tyv ty
     | TyVar tyv == ty = return []
     | tyv `elem` fv ty = throwError $ OccursCheck (TyVar tyv) ty
-    | kind tyv /= kind ty = throwError (strMsg "Different kinds")
-    | otherwise = return (tyv +-> ty)
-
-data Scheme = Forall [Kind] Type
-            deriving (Eq, Show)
-
-instance Types Scheme where
-    apply sub (Forall ks ty) = Forall ks (apply sub ty)
-
-    fv (Forall _ ty) = fv ty
-
-toScheme :: Type -> Scheme
-toScheme = Forall []
-
-quantify :: [TyVar] -> Type -> Scheme
-quantify tyvs ty = Forall ks (apply sub ty)
-  where
-    tyvs' = filter (`elem` fv ty) tyvs
-    sub = zip tyvs' (map TyGen [0..])
-    ks = map kind tyvs'
-
-class Instantiate ty where
-    inst :: [Type] -> ty -> ty
-
-instance Instantiate Type where
-    inst tys (TyGen i) | length tys > i = tys !! i
-                       | otherwise = error "TypesTypes.inst: TyGen out of bounds"
-    inst tys (TyApp ty1 ty2) = TyApp (inst tys ty1) (inst tys ty2)
-    inst _ ty = ty
-
-data Assump a = Id :>: a
-              deriving (Eq, Show)
-
-instance Types ty => Types (Assump ty) where
-    apply sub (tyv :>: sc) = tyv :>: apply sub sc
-    fv (_ :>: sc) = fv sc
-
-lookupAss :: Id -> [Assump b] -> Maybe b
-lookupAss v = lookup v . map (\(v' :>: sc) -> (v', sc))
+    | otherwise = do
+        tyvk <- kind (TyVar tyv)
+        tyk <- kind ty
+        if tyvk /= tyk then
+            throwError (strMsg "Different kinds")
+          else return (tyv +-> ty)

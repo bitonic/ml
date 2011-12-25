@@ -22,18 +22,6 @@ inferType decls' =
         InferState _ tys' ks' <- execStateT (tyDecl decl) (InferState [] tys ks)
         go tys' ks' decls
 
-class (MonadFresh Integer m, MonadError TypeError m) => MonadInfer m where
-    applySubst :: Types ty => ty -> m ty
-    extSubst   :: Subst -> m ()
-
-    getTypes   :: m [Assump Scheme]
-    putTypes   :: [Assump Scheme] -> m ()
-
-    getKinds   :: m [Assump Kind]
-    putKinds   :: [Assump Kind] -> m ()
-
-    unify      :: Type -> Type -> m ()
-
 data InferState = InferState { substitution :: Subst
                              , types        :: [Assump Scheme]
                              , kinds        :: [Assump Kind]

@@ -3,8 +3,7 @@ module Syntax
        ( Id
        , Decl (..)
        , DataBody
-       , TypeS (..)
-       , TypeSig
+       , Type (..)
        , Literal (..)
        , Pattern (..)
        , Term (..)
@@ -28,13 +27,11 @@ data Decl t = ValDecl Id t
             | DataDecl Id [Id] DataBody
             deriving (Show, Eq)
 
-data TypeS t = TyCon t
-             | TyApp (TypeS t) (TypeS t)
-             | TyVar t
-             | TyGen Int
-            deriving (Show, Eq)
-
-type TypeSig = TypeS Id
+data Type = TyCon Id
+          | TyApp Type Type
+          | TyVar Id
+          | TyGen Int
+          deriving (Show, Eq)
 
 data Literal = IntLit Id
              | RealLit Id
@@ -54,7 +51,7 @@ data Term fn lt = Var Id
                 | Case (Term fn lt) [(Pattern, (Term fn lt))]
                 deriving (Show, Eq)
 
-type DataBody = [(Id, [TypeSig])]
+type DataBody = [(Id, [Type])]
 
 -------------------------------------------------------------------------------
 
@@ -67,7 +64,7 @@ type DTerm    = Term Id Id
 tupleCon :: Int -> String
 tupleCon n = "(" ++ replicate (n - 1) ','  ++ ")"
 
-tupleType :: [TypeSig] -> TypeSig
+tupleType :: [Type] -> Type
 tupleType tss = foldl TyApp (TyCon (tupleCon (length tss))) tss
 
 tupleTerm :: [Term fn lt] -> Term fn lt

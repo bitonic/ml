@@ -1,5 +1,4 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, OverloadedStrings,
-             TypeSynonymInstances, ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts, TypeSynonymInstances #-}
 module TI.TypesTypes
        ( Kind (..)
        , (-->)
@@ -114,9 +113,6 @@ instance Instantiate Type where
 -------------------------------------------------------------------------------
 
 class (MonadFresh Integer m, MonadError TypeError m) => MonadInfer m where
-    applySubst :: Types ty => ty -> m ty
-    extSubst   :: Subst -> m ()
-
     getTypes   :: m (Assump Scheme)
     putTypes   :: (Assump Scheme) -> m ()
 
@@ -137,7 +133,7 @@ data TypeError = TypeError String
 instance Error TypeError where
     strMsg = TypeError
 
-lookupInfer :: forall m a. MonadInfer m => m (Assump a) -> (Id -> TypeError) -> Id -> m a
+lookupInfer :: MonadInfer m => m (Assump a) -> (Id -> TypeError) -> Id -> m a
 lookupInfer m f v = do
    xM <- liftM (Map.lookup v) m
    case xM of

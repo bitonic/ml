@@ -123,6 +123,8 @@ class (MonadFresh Integer m, MonadError TypeError m) => MonadInfer m where
     getKinds   :: m (Assump Kind)
     putKinds   :: (Assump Kind) -> m ()
 
+    freshVar   :: m Var
+
 data TypeError = TypeError String
                | UnboundVar Var
                | UnboundConstructor Con
@@ -157,7 +159,10 @@ lookupVar :: MonadInfer m => Var -> m Scheme
 lookupVar = lookupInfer getTypes (UnboundVar . var) . unVar
 
 addVar :: MonadInfer m => Var -> Scheme -> m ()
-addVar v = addType (unVar v)
+addVar = addType . unVar
+
+addCon :: MonadInfer m => Con -> Scheme -> m ()
+addCon = addType . unCon
 
 lookupCon :: MonadInfer m => Con -> m Scheme
 lookupCon = lookupInfer getTypes (UnboundConstructor . con) . unCon
@@ -167,6 +172,9 @@ lookupTyVar = lookupInfer getKinds (UnboundTypeVar . var) . unVar
 
 addTyVar :: MonadInfer m => Var -> Kind -> m ()
 addTyVar tyv = addKind (unVar tyv)
+
+addTyCon :: MonadInfer m => Con -> Kind -> m ()
+addTyCon = addKind . unCon
 
 lookupTyCon :: MonadInfer m => Con -> m Kind
 lookupTyCon = lookupInfer getKinds (UnboundTypeConstructor . con) . unCon

@@ -7,8 +7,8 @@ module Pretty
 
        , prettyScheme
        , prettyType
-       , prettyAssumps
-       , prettySubst
+       , prettyAssump
+       -- , prettySubst
        , pScheme
        , pKind
        ) where
@@ -24,8 +24,14 @@ import TI.TypesTypes
 prettyML :: [Decl FullTerm] -> String
 prettyML = render . vcat . map (pDecl (hsep . (map pPattern)) pPattern)
 
+pVar :: Var -> Doc
+pVar = text . unVar
+
+pCon :: Con -> Doc
+pCon = text . unCon
+
 prettyDesugar :: [Decl DTerm] -> String
-prettyDesugar = render . vcat . map (pDecl text text)
+prettyDesugar = render . vcat . map (pDecl pVar pVar)
 
 pTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
 pTerm _ _ (Var v) = text (unVar v)
@@ -49,9 +55,9 @@ parensTerm f l t = case t of
     d = pTerm f l t
 
 pPattern :: Pattern -> Doc
-pPattern (VarPat v) = text v
-pPattern (Pat c pts) = parens (text c <+> hsep (map pPattern pts))
-pPattern (LitPat lit) = pLiteral lit
+pPattern (VarPat v) = pVar v
+pPattern (Pat c pts) = parens (pCon c <+> hsep (map pPattern pts))
+pPattern (IntPat i) = text i
 
 pLiteral :: Literal -> Doc
 pLiteral (IntLit i) = text i
@@ -65,26 +71,26 @@ pCases tf (case' : cases) = (space <+> p case') $$
 pCases _ _ = "Parser.pCases: Received 0 cases"
 
 pDecl :: (fn -> Doc) -> (lt -> Doc) -> Decl (Term fn lt) -> Doc
-pDecl f l (ValDecl v t) = sep ["let" <+> text v <+> equals, nest 4 (pTerm f l t)]
+pDecl f l (ValDecl v t) = sep ["let" <+> pVar v <+> equals, nest 4 (pTerm f l t)]
 pDecl _ _ (DataDecl c tyvs dbody)
-    = "data" <+> text c <+> hsep (map text tyvs) <+> "where" $$
+    = "data" <+> pCon c <+> hsep (map pVar tyvs) <+> "where" $$
       nest 4 (pDataBody dbody)
 
 pDataBody :: DataBody -> Doc
 pDataBody (opt : opts) = space <+> p opt $$ vcat (map (\opt' -> "|" <+> p opt') opts)
   where
-    p (c, tss) = text c <+> hsep (map pType tss)
+    p (c, tss) = pCon c <+> hsep (map pType tss)
 pDataBody _ = "Parser.pDataBody: Received 0 options"
 
 pType :: Type -> Doc
-pType (TyApp (TyApp (TyCon "(->)") ts1) ts2) =
+pType (TyApp (TyApp (TyCon (ConN "(->)")) ts1) ts2) =
     pParensType ts1 <+> "->" <+> pType ts2
-pType (TyApp (TyApp (TyCon "(,)") ts1) ts2) =
+pType (TyApp (TyApp (TyCon (ConN "(,)")) ts1) ts2) =
     "(" <> pType ts1 <> "," <+> pType ts2 <> ")"
-pType (TyApp (TyApp (TyApp (TyCon "(,,)") ts1) ts2) ts3) =
+pType (TyApp (TyApp (TyApp (TyCon (ConN "(,,)")) ts1) ts2) ts3) =
     "(" <> pType ts1 <> "," <+> pType ts2 <> "," <+> pType ts3 <> ")"
-pType (TyVar tyv) = text tyv
-pType (TyCon tyc) = text tyc
+pType (TyVar tyv) = pVar tyv
+pType (TyCon tyc) = pCon tyc
 pType (TyApp ty1 ty2) = pParensType ty1 <+> pType ty2
 pType (TyGen i) = text (show i)
 
@@ -103,8 +109,8 @@ prettyScheme = render . pScheme
 prettyType :: Type -> String
 prettyType = render . pType
 
-prettyAssumps :: (a -> Doc) -> [Assump a] -> String
-prettyAssumps f = render . vcat . map (pAssump f)
+prettyAssump :: (a -> Doc) -> Assump a -> String
+prettyAssump f = render . pAssump f
 
 pAssump :: (a -> Doc) -> Assump a -> Doc
 pAssump f m = vcat $ map (\(x, ty) -> text x <+> ":" <+> f ty) (Map.toList m)
@@ -121,20 +127,24 @@ pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
   where
     p Star = "*"
     p k = parens (pKind k)
+pKind (KVar v) = pVar v
 
-prettySubst :: Subst -> String
-prettySubst = render . vcat . map (\(tyv, ty) -> text tyv <+> "=>" <+> pType ty)
+-- prettySubst :: Subst -> String
+-- prettySubst = render . vcat . map (\(tyv, ty) -> text tyv <+> "=>" <+> pType ty)
 
 instance Show TypeError where
     show (TypeError s) = "TypeError: " ++ s
-    show (UnboundVar v) = "Unboud variable \"" ++ v ++ "\""
-    show (UnboundConstructor c) = "Unbound constructor \"" ++ c ++ "\""
+    show (UnboundVar v) = "Unboud variable \"" ++ unVar v ++ "\""
+    show (UnboundConstructor c) = "Unbound constructor \"" ++ unCon c ++ "\""
     show (MismatchingKinds tyv k1 k2) =
         "Mismatching kinds for type variable " ++ tyv ++ ": \"" ++
         prettyKind k1 ++ "\" and \"" ++ prettyKind k2 ++ "\""
-    show (UnboundTypeVar tyv) = "Unbound type variable \"" ++ tyv ++ "\""
+    show (UnboundTypeVar tyv) = "Unbound type variable \"" ++ unVar tyv ++ "\""
     show (UnboundTypeConstructor tyc) =
-        "Unbound type constructor \"" ++ tyc ++ "\""
+        "Unbound type constructor \"" ++ unCon tyc ++ "\""
     show (OccursCheck ty1 ty2) =
          "Occurs check fails when unifying \"" ++ prettyType ty1 ++ "\" with \"" ++
          prettyType ty2 ++ "\""
+    show (KindOccursCheck k1 k2) =
+         "Occurs check fails when unifying \"" ++ prettyKind k1 ++ "\" with \"" ++
+         prettyKind k2 ++ "\""

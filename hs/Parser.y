@@ -52,7 +52,7 @@ Atom : var          { Var $1 }
 Literal : int      { IntLit $1 }
         | real     { RealLit $1 }
 
-Tuple(p) : '(' TupleBody(p) ')' { $2 }
+Tuple(p) : '(' TupleBody(p) ')' { reverse $2 }
 
 TupleBody(p) : p ',' p            { [$3, $1] }
              | TupleBody(p) ',' p { $3 : $1 }
@@ -97,7 +97,7 @@ TypeSig : TyAtom { $1 }
 
 TyAtom : con { TyCon $1 }
        | var { TyVar $1 }
-       | Tuple(TypeSig) { tupleType (reverse $1) }
+       | Tuple(TypeSig) { tupleType $1 }
        | '(' TypeSig ')' { $2 }
 
 {

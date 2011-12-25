@@ -1,23 +1,34 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, TupleSections, ScopedTypeVariables,
-             MultiParamTypeClasses, FunctionalDependencies #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, MultiParamTypeClasses,
+             FunctionalDependencies #-}
 module TI.TypeInfer where
 
 import Control.Monad.Trans
 import Control.Monad.Error
 import Control.Monad.State
-import Data.List ((\\), groupBy, sortBy, union)
-import Data.Ord (comparing)
-import Data.Function (on)
+import Data.List ((\\))
 
 import Syntax
 import Fresh
 import TI.TypesTypes
 import TI.BaseEnv
 
+-------------------------------------------------------------------------------
 
 class MonadInfer m => MonadUnify ty m | m -> ty where
     applySubst :: SubstApply ty a => a -> m a
     extSubst   :: SubstApply ty ty => Subst ty -> m ()
+    getSubst   :: m (Subst ty)
+
+    freshVar   :: m Var
+
+unify :: MonadUnify Type m => Type -> Type -> m ()
+unify ty1 ty2 = do
+    sub1 <- getSubst
+    sub2 <- mgu (apply sub1 ty1) (apply sub1 ty2)
+    extSubst sub2
+
+--- INSTANCES -----------------------------------------------------------------
 
 type InferState = (Assump Scheme, Assump Kind)
 
@@ -38,14 +49,87 @@ instance MonadInfer (StateT s (StateT InferState (ErrorT TypeError (Fresh Intege
 instance MonadUnify ty
          (StateT (Subst ty) (StateT InferState (ErrorT TypeError (Fresh Integer)))) where
     applySubst t = liftM (`apply` t) get
-
     extSubst sub' = modify (@@ sub')
+    getSubst = get
 
-    -- unify ty1 ty2 =
-    --     do sub1 <- gets substitution
-    --        sub2 <- mgu (apply sub1 ty1) (apply sub1 ty2)
-    --        extSubst sub2
+    freshVar = liftM (\i -> var ("_v" ++ show i)) fresh
 
+-------------------------------------------------------------------------------
+
+updateTypes :: MonadUnify Type m => m ()
+updateTypes = do
+    sub <- getSubst
+    types <- getTypes
+    putTypes (apply sub types)
+
+freshTyVar :: MonadUnify Type m => Kind -> m Type
+freshTyVar k = do
+    ty <- freshVar
+    addKind (unVar ty) k
+    return (TyVar ty)
+
+freshen :: MonadUnify Type m => Scheme -> m Type
+freshen (Forall ks t) = liftM (`inst` t) (mapM freshTyVar ks)
+
+tiTerm :: (MonadInfer m, MonadUnify Type m) => DTerm -> m Type
+tiTerm (Var v) = lookupVar v >>= freshen
+tiTerm (Con c) = lookupCon c >>= freshen
+tiTerm (Abs v t) = do
+    ty <- freshTyVar Star
+    addVar v (toScheme ty)
+    ty1 <- tiTerm t
+    applySubst (ty --> ty1)
+tiTerm (App t1 t2) = do
+    ty <- freshTyVar Star
+    ty1 <- tiTerm t1
+    updateTypes
+    ty2 <- tiTerm t2
+    (`unify` (ty2 --> ty)) =<< applySubst ty1
+    applySubst ty
+tiTerm (Let v t1 t2) = do
+    ty <- tiTerm t1
+    updateTypes
+    ctxFv <- liftM fv getTypes
+    ty' <- quantify (fv ty \\ ctxFv) ty
+    addVar v ty'
+    tiTerm t2
+tiTerm (Literal lit) = return $ tiLiteral lit
+tiTerm (Case t cases) = do
+    ty <- tiTerm t
+    tyv <- freshTyVar Star
+    tiCases ty tyv cases
+
+tiCases :: MonadUnify Type m
+           => Type               -- * The type of the matched term
+           -> Type               -- * The return type
+           -> [(Pattern, DTerm)] -> m Type
+tiCases _ ty [] = return ty
+tiCases tyT ty1 ((pt, t) : cases) = do
+    tyPt <- tiPattern pt
+    unify tyPt tyT
+    ty2 <- tiTerm t
+    unify ty1 ty2
+    ty1' <- applySubst ty1
+    tyT' <- applySubst tyT
+    tiCases tyT' ty1' cases
+
+tiLiteral :: Literal -> Type
+tiLiteral (IntLit _) = intCon
+tiLiteral (RealLit _) = realCon
+
+tiPattern :: MonadUnify Type m => Pattern -> m Type
+tiPattern (VarPat v) = do
+    ty <- freshTyVar Star
+    addVar v (toScheme ty)
+    return ty
+tiPattern (IntPat _) = return intCon
+tiPattern (Pat c pts) = do
+    sc <- lookupCon c
+    tys <- mapM tiPattern pts
+    tyv <- freshTyVar Star
+    ty <- freshen sc
+    unify ty (foldr (-->) tyv tys)
+    applySubst tyv
 
 -- inferType :: [Decl DTerm] -> Either TypeError ([Assump Scheme], [Assump Kind])
 -- inferType decls' =
@@ -57,46 +141,6 @@ instance MonadUnify ty
 --         InferState _ tys' ks' <- execStateT (tyDecl decl) (InferState [] tys ks)
 --         go tys' ks' decls
 
--- data InferState = InferState { substitution :: Subst
---                              , types        :: [Assump Scheme]
---                              , kinds        :: [Assump Kind]
---                              }
---                 deriving (Eq, Show)
-
--- instance MonadInfer (StateT InferState (ErrorT TypeError (Fresh Integer))) where
---     applySubst ty = liftM (`apply` ty) (gets substitution)
---     extSubst sub =
---         modify (\(InferState sub' tys ks) -> (InferState (sub @@ sub') tys ks))
-
---     getTypes = gets types
---     putTypes tys = modify (\(InferState s _ ks) -> (InferState s tys ks))
-
---     getKinds = gets kinds
---     putKinds ks = modify (\(InferState s tys _) -> (InferState s tys ks))
-
---     unify ty1 ty2 =
---         do sub1 <- gets substitution
---            sub2 <- mgu (apply sub1 ty1) (apply sub1 ty2)
---            extSubst sub2
-
--- runInferMonad :: StateT InferState (ErrorT TypeError (Fresh Integer)) a -> InferState -> Either TypeError (a, InferState)
--- runInferMonad m s = evalFresh (runErrorT (runStateT m s)) (0 :: Integer)
-
--- lookupTypes :: MonadInfer m => Id -> m (Maybe Scheme)
--- lookupTypes tyv = liftM (lookupAss tyv) getTypes
-
--- addType :: MonadInfer m => Assump Scheme -> m ()
--- addType scs = do {ctx <- getTypes; putTypes (scs : ctx)}
-
--- updateTypes :: MonadInfer m => m ()
--- updateTypes = do {ctx <- getTypes; putTypes =<< applySubst ctx}
-
--- freshTyVar :: (Show c, MonadFresh c m) => Kind -> m Type
--- freshTyVar k = liftM (\i -> TyVar ("_ty" ++ show i, k)) fresh
-
--- freshen :: (Show c, MonadFresh c m) => Scheme -> m Type
--- freshen (Forall ks t) = liftM (`inst` t) (mapM freshTyVar ks)
-
 -- tyDecl :: MonadInfer m => Decl DTerm -> m ()
 -- tyDecl (ValDecl v t) = do
 --     tys <- getTypes
@@ -107,78 +151,6 @@ instance MonadUnify ty
 --     ty' <- applySubst ty
 --     putTypes ((v :>: toScheme ty') : tys)
 -- tyDecl (DataDecl tyc tyvs body) = tyDataDecl tyc tyvs body
-
--- tyTerm :: MonadInfer m => DTerm -> m Type
--- tyTerm (Var v) = do
---     tyM <- lookupTypes v
---     case tyM of
---         Just ty -> freshen ty
---         Nothing -> throwError (UnboundVar v)
--- tyTerm (Con c) = do
---     tyM <- lookupTypes c
---     case tyM of
---         Just ty -> freshen ty
---         Nothing -> throwError (UnboundConstructor c)
--- tyTerm (Abs v t) = do
---     tyv <- freshTyVar Star
---     addType (v :>: toScheme tyv)
---     ty1 <- tyTerm t
---     applySubst (tyv --> ty1)
--- tyTerm (App t1 t2) = do
---     tyv <- freshTyVar Star
---     ty1 <- tyTerm t1
---     updateTypes
---     ty2 <- tyTerm t2
---     (`unify` (ty2 --> tyv)) =<< applySubst ty1
---     applySubst tyv
--- tyTerm (Let v t1 t2) = do
---     ty <- tyTerm t1
---     updateTypes
---     ctxFv <- liftM fv getTypes
---     let ty' = quantify (fv ty \\ ctxFv) ty
---     addType (v :>: ty')
---     tyTerm t2
--- tyTerm (Literal l) = return (tyLit l)
--- tyTerm (Case t cases) = do
---     ty <- tyTerm t
---     tyv <- freshTyVar Star
---     tyCases ty tyv cases
-
--- tyCases :: MonadInfer m
---            => Type               -- * The type of the matched term
---            -> Type               -- * The return type
---            -> [(Pattern, DTerm)] -> m Type
--- tyCases _ ty [] = return ty
--- tyCases tyT ty1 ((pt, t) : cases) = do
---     tyPt <- tyPattern pt
---     unify tyPt tyT
---     ty1' <- applySubst ty1
---     tyT' <- applySubst tyT
---     ty2 <- tyTerm t
---     unify ty1' ty2
---     ty1'' <- applySubst ty1'
---     tyCases tyT' ty1'' cases
-
--- tyPattern :: MonadInfer m => Pattern -> m Type
--- tyPattern (VarPat v) = do
---     tyv <- freshTyVar Star
---     addType (v :>: toScheme tyv)
---     return tyv
--- tyPattern (LitPat lit) = return (tyLit lit)
--- tyPattern (Pat c pts) = do
---     tyM <- lookupTypes c
---     case tyM of
---         Nothing -> throwError (UnboundConstructor c)
---         Just sc -> do
---             tys <- mapM tyPattern pts
---             tyv <- freshTyVar Star
---             ty <- freshen sc
---             unify ty (foldr (-->) tyv tys)
---             applySubst tyv
-
--- tyLit :: Literal -> Type
--- tyLit (IntLit _) = intCon
--- tyLit (RealLit _) = realCon
 
 -- getTSKinds :: MonadError TypeError m => TypeSig -> m [(Id, Kind)]
 -- getTSKinds ts =

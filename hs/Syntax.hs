@@ -3,6 +3,10 @@ module Syntax
        , Decl (..)
        , DataBody
        , Type (..)
+       , Var (..)
+       , var
+       , Con (..)
+       , con
        , Literal (..)
        , Pattern (..)
        , Term (..)
@@ -20,27 +24,44 @@ module Syntax
 
 type Id = String
 
-data Decl t = ValDecl Id t
-            | DataDecl Id [Id] DataBody
+data Decl t = ValDecl Var t
+            | DataDecl Con [Var] DataBody
             deriving (Show, Eq)
 
-data Type = TyCon Id
+newtype Var = VarN {unVar :: Id}
+            deriving (Eq, Ord)
+newtype Con = ConN {unCon :: Id}
+            deriving (Eq, Ord)
+
+instance Show Var where
+    show = show . unVar
+
+instance Show Con where
+    show = show . unCon
+
+var :: Id -> Var
+var = VarN
+
+con :: Id -> Con
+con = ConN
+
+data Type = TyCon Con
           | TyApp Type Type
-          | TyVar Id
+          | TyVar Var
           | TyGen Int
           deriving (Show, Eq)
 
-data Literal = IntLit Id
-             | RealLit Id
+data Literal = IntLit String
+             | RealLit String
              deriving (Show, Eq)
 
-data Pattern = VarPat Id
-             | Pat Id [Pattern]
-             | LitPat Literal
+data Pattern = VarPat Var
+             | Pat Con [Pattern]
+             | IntPat String
              deriving (Show, Eq)
 
-data Term fn lt = Var Id
-                | Con Id
+data Term fn lt = Var Var
+                | Con Con
                 | Abs fn (Term fn lt)
                 | App (Term fn lt) (Term fn lt)
                 | Let lt (Term fn lt) (Term fn lt)
@@ -48,18 +69,18 @@ data Term fn lt = Var Id
                 | Case (Term fn lt) [(Pattern, (Term fn lt))]
                 deriving (Show, Eq)
 
-type DataBody = [(Id, [Type])]
+type DataBody = [(Con, [Type])]
 
 -------------------------------------------------------------------------------
 
 type FullTerm = Term [Pattern] Pattern
 
-type DTerm    = Term Id Id
+type DTerm    = Term Var Var
 
 -------------------------------------------------------------------------------
 
-tupleCon :: Int -> String
-tupleCon n = "(" ++ replicate (n - 1) ','  ++ ")"
+tupleCon :: Int -> Con
+tupleCon n = con $ "(" ++ replicate (n - 1) ','  ++ ")"
 
 tupleType :: [Type] -> Type
 tupleType tss = foldl TyApp (TyCon (tupleCon (length tss))) tss

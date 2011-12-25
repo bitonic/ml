@@ -34,21 +34,21 @@ tokens :-
   \:                 { const COLON }
   $digit+            { INTLIT }
   $digit+ \. $digit+ { REALLIT }
-  [a-z]@id           { VAR }
-  [A-Z]@id           { CON }
+  [a-z]@id           { VAR . var }
+  [A-Z]@id           { CON . con }
 {
 
 data Token = LET
            | IN
-           | VAR Id
-           | CON Id
+           | VAR Var
+           | CON Con
            | EQUALS
            | LPAREN
            | RPAREN
            | ARROW
            | LAMBDA
-           | INTLIT Id
-           | REALLIT Id
+           | INTLIT String
+           | REALLIT String
            | COMMA
            | DATA
            | BAR

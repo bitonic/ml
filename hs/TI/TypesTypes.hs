@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, TypeSynonymInstances, FunctionalDependencies,
-             MultiParamTypeClasses, FlexibleInstances #-}
+             MultiParamTypeClasses, FlexibleInstances, UndecidableInstances #-}
 module TI.TypesTypes
        -- ( Kind (..)
        -- , (-->)
@@ -36,20 +36,17 @@ import Syntax
 
 -------------------------------------------------------------------------------
 
-type TyVar = Id
-type TyCon = Id
-
-type Subst a = [(TyVar, a)]
+type Subst a = [(Var, a)]
 
 infixr 3 -->
 (-->) :: Type -> Type -> Type
-ty1 --> ty2 = TyApp (TyApp (TyCon "(->)") ty1) ty2
+ty1 --> ty2 = TyApp (TyApp (TyCon (con "(->)")) ty1) ty2
 
 class SubstApply ty a | a -> ty where
     apply :: Subst ty -> a -> a
 
 class Types ty where
-    fv    :: ty -> [TyVar]
+    fv :: ty -> [Var]
 
 instance SubstApply Type Type where
     apply sub (TyVar tyv) = case lookup tyv sub of
@@ -63,13 +60,13 @@ instance Types Type where
     fv (TyApp ty1 ty2) = fv ty1 `union` fv ty2
     fv _ = []
 
-instance SubstApply ty ty => SubstApply ty [ty] where
+instance SubstApply ty a => SubstApply ty [a] where
     apply sub = map (apply sub)
 
 instance Types ty => Types [ty] where
     fv = nub . concatMap fv
 
-(+->) :: TyVar -> Type -> Subst Type
+(+->) :: Var -> Type -> Subst Type
 tyv +-> ty = [(tyv, ty)]
 
 infixr 4 @@
@@ -80,7 +77,7 @@ sub1 @@ sub2 = [(tyv, apply sub1 ty) | (tyv, ty) <- sub2] ++ sub1
 
 type Assump a = Map Id a
 
-instance SubstApply ty ty => SubstApply ty (Assump ty) where
+instance SubstApply ty a => SubstApply ty (Assump a) where
     apply sub = Map.map (apply sub)
 
 instance Types ty => Types (Assump ty) where
@@ -100,7 +97,7 @@ instance SubstApply Type Scheme where
 instance Types Scheme where
     fv (Forall _ ty) = fv ty
 
-quantify :: MonadInfer m => [Id] -> Type -> m Scheme
+quantify :: MonadInfer m => [Var] -> Type -> m Scheme
 quantify tyvs ty = do
     ks <- mapM kind $ map TyVar tyvs'
     return $ Forall ks (apply sub ty)
@@ -126,14 +123,12 @@ class (MonadFresh Integer m, MonadError TypeError m) => MonadInfer m where
     getKinds   :: m (Assump Kind)
     putKinds   :: (Assump Kind) -> m ()
 
-    unify      :: Type -> Type -> m ()
-
 data TypeError = TypeError String
-               | UnboundVar Id
-               | UnboundConstructor Id
+               | UnboundVar Var
+               | UnboundConstructor Con
                | MismatchingKinds Id Kind Kind
-               | UnboundTypeVar Id
-               | UnboundTypeConstructor Id
+               | UnboundTypeVar Var
+               | UnboundTypeConstructor Con
                | OccursCheck Type Type
                deriving (Eq)
 
@@ -147,23 +142,63 @@ lookupInfer m f v = do
        Nothing -> throwError $ f v
        Just x  -> return x
 
-lookupVar :: MonadInfer m => Id -> m Scheme
-lookupVar = lookupInfer getTypes UnboundVar
+addType :: MonadInfer m => Id -> Scheme -> m ()
+addType i ty = do
+    tyCtx <- getTypes
+    putTypes (Map.insert i ty tyCtx)
 
-lookupCon :: MonadInfer m => Id -> m Scheme
-lookupCon = lookupInfer getTypes UnboundConstructor
+addKind :: MonadInfer m => Id -> Kind -> m ()
+addKind i k = do
+    kCtx <- getKinds
+    putKinds (Map.insert i k kCtx)
 
-lookupTyVar :: MonadInfer m => Id -> m Kind
-lookupTyVar = lookupInfer getKinds UnboundTypeVar
+lookupVar :: MonadInfer m => Var -> m Scheme
+lookupVar = lookupInfer getTypes (UnboundVar . var) . unVar
 
-lookupTyCon :: MonadInfer m => Id -> m Kind
-lookupTyCon = lookupInfer getKinds UnboundTypeConstructor
+addVar :: MonadInfer m => Var -> Scheme -> m ()
+addVar v = addType (unVar v)
+
+lookupCon :: MonadInfer m => Con -> m Scheme
+lookupCon = lookupInfer getTypes (UnboundConstructor . con) . unCon
+
+lookupTyVar :: MonadInfer m => Var -> m Kind
+lookupTyVar = lookupInfer getKinds (UnboundTypeVar . var) . unVar
+
+addTyVar :: MonadInfer m => Var -> Kind -> m ()
+addTyVar tyv = addKind (unVar tyv)
+
+lookupTyCon :: MonadInfer m => Con -> m Kind
+lookupTyCon = lookupInfer getKinds (UnboundTypeConstructor . con) . unCon
+
+-------------------------------------------------------------------------------
+
+mgu :: MonadInfer m => Type -> Type -> m (Subst Type)
+mgu (TyApp tyl1 tyr1) (TyApp tyl2 tyr2) = do
+    sub1 <- mgu tyl1 tyl2
+    sub2 <- mgu (apply sub1 tyr1) (apply sub1 tyr2)
+    return (sub2 @@ sub1)
+mgu (TyVar tyv) ty = varBind tyv ty
+mgu ty (TyVar tyv) = varBind tyv ty
+mgu (TyCon tyc1) (TyCon tyc2) | tyc1 == tyc2 = return []
+mgu _  _ = throwError (strMsg "Types do not unify")
+
+varBind :: MonadInfer m => Var -> Type -> m (Subst Type)
+varBind tyv ty
+    | TyVar tyv == ty = return []
+    | tyv `elem` fv ty = throwError $ OccursCheck (TyVar tyv) ty
+    | otherwise = do
+        tyvk <- kind (TyVar tyv)
+        tyk <- kind ty
+        if tyvk /= tyk then
+            throwError (strMsg "Different kinds")
+          else return (tyv +-> ty)
 
 -------------------------------------------------------------------------------
 
 infixr 3 :*>
 data Kind = Star
           | Kind :*> Kind
+          | KVar Id
           deriving (Eq, Show)
 
 class HasKind ty where
@@ -181,24 +216,3 @@ instance HasKind Type where
 
 instance HasKind Scheme where
     kind (Forall _ ty) = kind ty
-
-mgu :: MonadInfer m => Type -> Type -> m (Subst Type)
-mgu (TyApp tyl1 tyr1) (TyApp tyl2 tyr2) = do
-    sub1 <- mgu tyl1 tyl2
-    sub2 <- mgu (apply sub1 tyr1) (apply sub1 tyr2)
-    return (sub2 @@ sub1)
-mgu (TyVar tyv) ty = varBind tyv ty
-mgu ty (TyVar tyv) = varBind tyv ty
-mgu (TyCon tyc1) (TyCon tyc2) | tyc1 == tyc2 = return []
-mgu _  _ = throwError (strMsg "Types do not unify")
-
-varBind :: MonadInfer m => TyVar -> Type -> m (Subst Type)
-varBind tyv ty
-    | TyVar tyv == ty = return []
-    | tyv `elem` fv ty = throwError $ OccursCheck (TyVar tyv) ty
-    | otherwise = do
-        tyvk <- kind (TyVar tyv)
-        tyk <- kind ty
-        if tyvk /= tyk then
-            throwError (strMsg "Different kinds")
-          else return (tyv +-> ty)

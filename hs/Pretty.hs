@@ -28,8 +28,8 @@ prettyDesugar :: [Decl DTerm] -> String
 prettyDesugar = render . vcat . map (pDecl text text)
 
 pTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
-pTerm _ _ (Var v) = text v
-pTerm _ _ (Con c) = text c
+pTerm _ _ (Var v) = text (unVar v)
+pTerm _ _ (Con c) = text (unCon c)
 pTerm f l (Abs pts t) = "\\" <> f pts <+> "->" <+> pTerm f l t
 pTerm f l (App t1 t2) = pTerm f l t1 <+> parensTerm f l t2
 pTerm f l (Let pt t1 t2) = sep [ "let" <+> l pt <+> equals <+> pTerm f l t1 <+> "in"

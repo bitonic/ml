@@ -59,7 +59,7 @@ TupleBody(p) : p ',' p            { [$3, $1] }
 
 PatternAtom : var             { VarPat $1 }
             | Tuple(Pattern)  { Pat (tupleCon (length $1)) $1 }
-            | Literal         { LitPat $1 }
+            | int             { IntPat $1 }
             | '(' Pattern ')' { $2 }
 
 Pattern : PatternAtom    { $1 }

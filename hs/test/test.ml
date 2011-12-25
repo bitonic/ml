@@ -21,9 +21,9 @@ let foo = let x = 4 in
           let y = 0 in
           plus x y
 
--- data Maybe a =
---     Just a
---   | Nothing
+data Maybe a =
+    Just a
+  | Nothing
 
 -- let fromJust = \(Just x) -> x
 

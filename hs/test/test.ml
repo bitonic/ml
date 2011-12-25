@@ -46,3 +46,7 @@ let subtract = \x y -> plus x (negate y)
 let times = \x y -> case isZero y of
                        True -> 0
                      | False -> plus x (times x (subtract y 1))
+
+let fix = \f -> f (fix f)
+
+data Fix f = In (f (Fix f))

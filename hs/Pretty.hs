@@ -11,6 +11,7 @@ module Pretty
        -- , prettySubst
        , pScheme
        , pKind
+       , prettyKind
        ) where
 
 import Text.PrettyPrint

@@ -14,6 +14,9 @@ import Fresh
 import TI.TypesTypes
 import TI.BaseEnv
 
+import Debug.Trace
+import Pretty
+
 -------------------------------------------------------------------------------
 
 class MonadInfer m => MonadUnify ty m | m -> ty where
@@ -146,6 +149,7 @@ kiType (TyApp t1 t2) = do
     updateKinds
     k2 <- kiType t2
     (`unify` (k2 :*> kv)) =<< applySubst k1
+    updateKinds
     applySubst kv
 kiType (TyGen _) = error "TI.TypeInfer.kiType: TyGen"
 
@@ -153,7 +157,9 @@ tiDataOption :: MonadUnify Kind m => Type -> [Type] -> m Type
 tiDataOption res tys = do
     forM_ tys $ \ty -> do
         k <- kiType ty
+        sub <- getSubst
         unify k Star
+        applySubst k
     return (foldr (-->) res tys)
 
 replaceVars :: Kind -> Kind
@@ -168,6 +174,8 @@ kiDataDecl tyc tyvs body = do
         addTyVar tyv kv
 
     let res = foldl TyApp (TyCon tyc) $ map TyVar tyvs
+
+    addTyCon tyc =<< liftM KVar freshVar
 
     tys <- forM body $ \(c, tys) -> do
         ty <- tiDataOption res tys

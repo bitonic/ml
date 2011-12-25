@@ -49,4 +49,25 @@ let times = \x y -> case isZero y of
 
 let fix = \f -> f (fix f)
 
+let undefined = fix (\x -> x)
+
 data Fix f = In (f (Fix f))
+
+data Tree t = Leaf Int
+            | Branch t t
+
+let leaf = \n -> In (Leaf n)
+
+let branch = \l r -> In (Branch l r)
+
+let singleton = \i -> leaf i
+
+let leq = \x y -> undefined
+
+let insert = \x (In t) -> case t of
+      Leaf y -> (case leq x y of
+          True -> branch (leaf x) (leaf y)
+        | False -> branch (leaf y) (leaf x))
+    | Branch l r -> (case leq x y of
+          True -> branch (insert x l) r
+        | False -> branch l (insert x r))

@@ -160,3 +160,6 @@ instance Show TypeError where
     show (KindOccursCheck k1 k2) =
          "Occurs check fails when unifying \"" ++ prettyKind k1 ++ "\" with \"" ++
          prettyKind k2 ++ "\""
+    show (DifferentKinds ty1 k1 ty2 k2) =
+         "Different kinds, \"" ++ prettyType ty1 ++ " : " ++ prettyKind k1 ++
+         "\" and \"" ++ prettyType ty2 ++ " : " ++ prettyKind k2

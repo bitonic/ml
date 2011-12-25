@@ -149,12 +149,12 @@ kiType (TyApp t1 t2) = do
     applySubst kv
 kiType (TyGen _) = error "TI.TypeInfer.kiType: TyGen"
 
-tiDataOption :: MonadUnify Kind m => Type -> Con -> [Type] -> m Type
-tiDataOption res c tys = do
+tiDataOption :: MonadUnify Kind m => Type -> [Type] -> m Type
+tiDataOption res tys = do
     forM_ tys $ \ty -> do
         k <- kiType ty
         unify k Star
-    return (TyCon c --> foldr (-->) res tys)
+    return (foldr (-->) res tys)
 
 replaceVars :: Kind -> Kind
 replaceVars (KVar _) = Star
@@ -169,19 +169,26 @@ kiDataDecl tyc tyvs body = do
 
     let res = foldl TyApp (TyCon tyc) $ map TyVar tyvs
 
-    forM_ body $ \(c, tys) -> do
-        ty <- tiDataOption res c tys
-        addCon c =<< quantify (fv ty) ty
+    tys <- forM body $ \(c, tys) -> do
+        ty <- tiDataOption res tys
+        return (c, ty)
+
+    kCtx <- getKinds
+    putKinds (Map.map replaceVars kCtx)
+
+    forM_ tys $ \(c, ty) -> addCon c =<< quantify (fv ty) ty
 
     ks <- mapM lookupTyVar tyvs
 
-    return $ foldr (:*>) Star (map replaceVars ks)
+    return $ foldr (:*>) Star ks
 
 tiDecl :: MonadInfer m => Decl DTerm -> m ()
 tiDecl (ValDecl v t) = do
     tys <- getTypes
+    ks <- getKinds
     ty <- evalStateT term ([] :: Subst Type)
     sc <- quantify (fv ty) ty
+    putKinds ks
     putTypes tys
     addVar v sc
   where

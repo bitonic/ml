@@ -34,6 +34,8 @@ import qualified Data.Map as Map
 import Fresh
 import Syntax
 
+import Debug.Trace
+
 -------------------------------------------------------------------------------
 
 type Subst a = [(Var, a)]
@@ -133,6 +135,7 @@ data TypeError = TypeError String
                | UnboundTypeConstructor Con
                | OccursCheck Type Type
                | KindOccursCheck Kind Kind
+               | DifferentKinds Type Kind Type Kind
                deriving (Eq)
 
 instance Error TypeError where
@@ -142,7 +145,10 @@ lookupInfer :: MonadInfer m => m (Assump a) -> (Id -> TypeError) -> Id -> m a
 lookupInfer m f v = do
    xM <- liftM (Map.lookup v) m
    case xM of
-       Nothing -> throwError $ f v
+       Nothing -> do
+           tys <- getTypes
+           () <- trace (show $ Map.lookup v tys) (return ())
+           throwError $ f v
        Just x  -> return x
 
 addType :: MonadInfer m => Id -> Scheme -> m ()
@@ -202,7 +208,7 @@ varBind tyv ty
         tyvk <- kind (TyVar tyv)
         tyk <- kind ty
         if tyvk /= tyk then
-            throwError (strMsg "Different kinds")
+            throwError $ DifferentKinds (TyVar tyv) tyvk ty tyk
           else return (tyv +-> ty)
 
 -------------------------------------------------------------------------------

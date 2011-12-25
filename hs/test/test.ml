@@ -25,24 +25,24 @@ data Maybe a =
     Just a
   | Nothing
 
--- let fromJust = \(Just x) -> x
+let fromJust = \(Just x) -> x
 
--- let fromMaybe = \x m -> case m of
---                             Just y -> y
---                           | Nothing -> x
+let fromMaybe = \x m -> case m of
+                            Just y -> y
+                          | Nothing -> x
 
--- let return = Just
+let return = Just
 
--- let bind = \m f -> case m of
---                      Just x  -> f x
---                    | Nothing -> Nothing
+let bind = \m f -> case m of
+                     Just x  -> f x
+                   | Nothing -> Nothing
 
--- let join = \m -> case m of
---                     Just (Just x) -> Just x
---                   | Nothing       -> Nothing
+let join = \m -> case m of
+                    Just (Just x) -> Just x
+                  | Nothing       -> Nothing
 
--- let subtract = \x y -> plus x (negate y)
+let subtract = \x y -> plus x (negate y)
 
--- let times = \x y -> case isZero y of
---                        True -> 0
---                      | False -> plus x (times x (subtract y 1))
+let times = \x y -> case isZero y of
+                       True -> 0
+                     | False -> plus x (times x (subtract y 1))

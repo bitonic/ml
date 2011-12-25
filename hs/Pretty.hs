@@ -101,7 +101,7 @@ pType (TyApp (TyApp (TyApp (TyCon (ConN "(,,)")) ts1) ts2) ts3) =
     "(" <> pType ts1 <> "," <+> pType ts2 <> "," <+> pType ts3 <> ")"
 pType (TyVar tyv) = pVar tyv
 pType (TyCon tyc) = pCon tyc
-pType (TyApp ty1 ty2) = pParensType ty1 <+> pType ty2
+pType (TyApp ty1 ty2) = pType ty1 <+> pParensType ty2
 pType (TyGen i) = text (show i)
 
 pParensType :: Type -> Doc

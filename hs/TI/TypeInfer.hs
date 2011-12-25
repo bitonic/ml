@@ -1,6 +1,8 @@
-{-# LANGUAGE FlexibleInstances, FlexibleContexts, TupleSections, ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleInstances, FlexibleContexts, TupleSections, ScopedTypeVariables,
+             MultiParamTypeClasses, FunctionalDependencies #-}
 module TI.TypeInfer where
 
+import Control.Monad.Trans
 import Control.Monad.Error
 import Control.Monad.State
 import Data.List ((\\), groupBy, sortBy, union)
@@ -11,6 +13,39 @@ import Syntax
 import Fresh
 import TI.TypesTypes
 import TI.BaseEnv
+
+
+class MonadInfer m => MonadUnify ty m | m -> ty where
+    applySubst :: SubstApply ty a => a -> m a
+    extSubst   :: SubstApply ty ty => Subst ty -> m ()
+
+type InferState = (Assump Scheme, Assump Kind)
+
+instance MonadInfer (StateT InferState (ErrorT TypeError (Fresh Integer))) where
+    getTypes = gets fst
+    putTypes tys = modify $ \(_, ks) -> (tys, ks)
+
+    getKinds = gets snd
+    putKinds ks = modify $ \(tys, _) -> (tys, ks)
+
+instance MonadInfer (StateT s (StateT InferState (ErrorT TypeError (Fresh Integer)))) where
+    getTypes = lift getTypes
+    putTypes = lift . putTypes
+
+    getKinds = lift getKinds
+    putKinds = lift . putKinds
+
+instance MonadUnify ty
+         (StateT (Subst ty) (StateT InferState (ErrorT TypeError (Fresh Integer)))) where
+    applySubst t = liftM (`apply` t) get
+
+    extSubst sub' = modify (@@ sub')
+
+    -- unify ty1 ty2 =
+    --     do sub1 <- gets substitution
+    --        sub2 <- mgu (apply sub1 ty1) (apply sub1 ty2)
+    --        extSubst sub2
+
 
 -- inferType :: [Decl DTerm] -> Either TypeError ([Assump Scheme], [Assump Kind])
 -- inferType decls' =

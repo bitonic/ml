@@ -36,7 +36,6 @@ tokens :-
   $digit+ \. $digit+ { REALLIT }
   [a-z]@id           { VAR }
   [A-Z]@id           { CON }
-
 {
 
 data Token = LET

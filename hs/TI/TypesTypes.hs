@@ -20,23 +20,12 @@ module TI.TypesTypes
        , Instantiate (..)
        , Assump (..)
        , lookupAss
-         -- * Pretty printing
-       , prettyScheme
-       , prettyType
-       , prettyAssumps
-       , prettySubst
-       , pType
-       , pScheme
-       , pKind
        ) where
 
 import Control.Monad.Error
 import Data.List (union, nub)
-import Text.PrettyPrint
 
 import Syntax
-
-import Debug.Trace
 
 -------------------------------------------------------------------------------
 
@@ -106,20 +95,6 @@ data TypeError = TypeError String
                | OccursCheck Type Type
                deriving (Eq)
 
-instance Show TypeError where
-    show (TypeError s) = "TypeError: " ++ s
-    show (UnboundVar v) = "Unboud variable \"" ++ v ++ "\""
-    show (UnboundConstructor c) = "Unbound constructor \"" ++ c ++ "\""
-    show (MismatchingKinds tyv k1 k2) =
-        "Mismatching kinds for type variable " ++ tyv ++ ": \"" ++
-        prettyKind k1 ++ "\" and \"" ++ prettyKind k2 ++ "\""
-    show (UnboundTypeVar tyv) = "Unbound type variable \"" ++ tyv ++ "\""
-    show (UnboundTypeConstructor tyc) =
-        "Unbound type constructor \"" ++ tyc ++ "\""
-    show (OccursCheck ty1 ty2) =
-         "Occurs check fails when unifying \"" ++ prettyType ty1 ++ "\" with \"" ++
-         prettyType ty2 ++ "\""
-
 instance Error TypeError where
     strMsg = TypeError
 
@@ -176,42 +151,3 @@ instance Types ty => Types (Assump ty) where
 
 lookupAss :: Id -> [Assump b] -> Maybe b
 lookupAss v = lookup v . map (\(v' :>: sc) -> (v', sc))
-
--------- PRETTY PRINTING YO ---------------------------------------------------
-
-prettyScheme :: Scheme -> String
-prettyScheme = render . pScheme
-
-prettyType :: Type -> String
-prettyType = render . pType
-
-pType :: Type -> Doc
-pType (TyApp (TyApp (TyCon ("(->)", _)) ty1) ty2) =
-    pParensTypeS pType ty1 <+> "->" <+> pType ty2
-pType (TyApp (TyApp (TyCon ("(,)", _)) ty1) ty2) =
-    "(" <> pType ty1 <> "," <+> pType ty2 <> ")"
-pType (TyApp (TyApp (TyApp (TyCon ("(,,)", _)) ty1) ty2) ty3) =
-    "(" <> pType ty1 <> "," <+> pType ty2 <> "," <+> pType ty3 <> ")"
-pType ty = pTypeS (text . fst) ty
-
-prettyAssumps :: (a -> Doc) -> [Assump a] -> String
-prettyAssumps f = render . vcat . map (pAssump f)
-
-pAssump :: (a -> Doc) -> Assump a -> Doc
-pAssump f (x :>: ty) = text x <+> ":" <+> f ty
-
-pScheme :: Scheme -> Doc
-pScheme (Forall _ ty) = pType ty
-
-prettyKind :: Kind -> String
-prettyKind = render . pKind
-
-pKind :: Kind -> Doc
-pKind Star = "*"
-pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
-  where
-    p Star = "*"
-    p k = parens (pKind k)
-
-prettySubst :: Subst -> String
-prettySubst = render . vcat . map (\(tyv, ty) -> text (fst tyv) <+> "=>" <+> pType ty)

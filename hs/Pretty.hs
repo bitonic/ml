@@ -34,6 +34,10 @@ prettyDesugar :: [Decl DTerm] -> String
 prettyDesugar = render . vcat . map (pDecl pVar pVar)
 
 pTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
+pTerm f l (App (App (Con (ConN "(,)")) t1) t2) =
+    "(" <> pTerm f l t1 <> "," <+> pTerm f l t2 <> ")"
+pTerm f l (App (App (App (Con (ConN "(,,)")) t1) t2) t3) =
+    "(" <> pTerm f l t1 <> "," <+> pTerm f l t2 <> "," <+> pTerm f l t3 <> ")"
 pTerm _ _ (Var v) = text (unVar v)
 pTerm _ _ (Con c) = text (unCon c)
 pTerm f l (Abs pts t) = "\\" <> f pts <+> "->" <+> pTerm f l t
@@ -47,6 +51,8 @@ pTerm f l (Case t cases) = ("case" <+> pTerm f l t <+> "of") $+$
 
 parensTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
 parensTerm f l t = case t of
+    App (App (Con (ConN "(,)")) _) _ -> d
+    App (App (App (Con (ConN "(,,)")) _) _) _ -> d
     Abs _ _ -> parens d
     Let _ _ _ -> parens d
     App _ _ -> parens d
@@ -56,6 +62,10 @@ parensTerm f l t = case t of
 
 pPattern :: Pattern -> Doc
 pPattern (VarPat v) = pVar v
+pPattern (Pat (ConN "(,)") [pt1, pt2]) =
+    "(" <>  pPattern pt1 <> "," <+> pPattern pt2 <> ")"
+pPattern (Pat (ConN "(,,)") [pt1, pt2, pt3]) =
+    "(" <>  pPattern pt1 <> "," <+> pPattern pt2 <> "," <+> pPattern pt3 <> ")"
 pPattern (Pat c pts) = parens (pCon c <+> hsep (map pPattern pts))
 pPattern (IntPat i) = text i
 
@@ -96,6 +106,8 @@ pType (TyGen i) = text (show i)
 
 pParensType :: Type -> Doc
 pParensType ty = case ty of
+    TyApp (TyApp (TyCon (ConN "(,)")) _) _ -> d
+    TyApp (TyApp (TyApp (TyCon (ConN "(,,)")) _) _) _ -> d
     TyApp _ _ -> parens d
     _ -> d
   where

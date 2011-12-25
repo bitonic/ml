@@ -45,7 +45,7 @@ ty1 --> ty2 = TyApp (TyApp (TyCon (con "(->)")) ty1) ty2
 class SubstApply ty a | a -> ty where
     apply :: Subst ty -> a -> a
 
-class Types ty where
+class HasVars ty where
     fv :: ty -> [Var]
 
 instance SubstApply Type Type where
@@ -55,7 +55,7 @@ instance SubstApply Type Type where
     apply sub (TyApp ty1 ty2) = TyApp (apply sub ty1) (apply sub ty2)
     apply _ ty = ty
 
-instance Types Type where
+instance HasVars Type where
     fv (TyVar tyv) = [tyv]
     fv (TyApp ty1 ty2) = fv ty1 `union` fv ty2
     fv _ = []
@@ -63,10 +63,10 @@ instance Types Type where
 instance SubstApply ty a => SubstApply ty [a] where
     apply sub = map (apply sub)
 
-instance Types ty => Types [ty] where
+instance HasVars ty => HasVars [ty] where
     fv = nub . concatMap fv
 
-(+->) :: Var -> Type -> Subst Type
+(+->) :: SubstApply a a => Var -> a -> Subst a
 tyv +-> ty = [(tyv, ty)]
 
 infixr 4 @@
@@ -80,7 +80,7 @@ type Assump a = Map Id a
 instance SubstApply ty a => SubstApply ty (Assump a) where
     apply sub = Map.map (apply sub)
 
-instance Types ty => Types (Assump ty) where
+instance HasVars ty => HasVars (Assump ty) where
     fv = fv . map snd . Map.toList
 
 -------------------------------------------------------------------------------
@@ -94,7 +94,7 @@ toScheme = Forall []
 instance SubstApply Type Scheme where
     apply sub (Forall ks ty) = Forall ks $ apply sub ty
 
-instance Types Scheme where
+instance HasVars Scheme where
     fv (Forall _ ty) = fv ty
 
 quantify :: MonadInfer m => [Var] -> Type -> m Scheme
@@ -130,6 +130,7 @@ data TypeError = TypeError String
                | UnboundTypeVar Var
                | UnboundTypeConstructor Con
                | OccursCheck Type Type
+               | KindOccursCheck Kind Kind
                deriving (Eq)
 
 instance Error TypeError where
@@ -172,15 +173,18 @@ lookupTyCon = lookupInfer getKinds (UnboundTypeConstructor . con) . unCon
 
 -------------------------------------------------------------------------------
 
-mgu :: MonadInfer m => Type -> Type -> m (Subst Type)
-mgu (TyApp tyl1 tyr1) (TyApp tyl2 tyr2) = do
-    sub1 <- mgu tyl1 tyl2
-    sub2 <- mgu (apply sub1 tyr1) (apply sub1 tyr2)
-    return (sub2 @@ sub1)
-mgu (TyVar tyv) ty = varBind tyv ty
-mgu ty (TyVar tyv) = varBind tyv ty
-mgu (TyCon tyc1) (TyCon tyc2) | tyc1 == tyc2 = return []
-mgu _  _ = throwError (strMsg "Types do not unify")
+class SubstApply a a => Unifiable a where
+    mgu :: MonadInfer m => a -> a -> m (Subst a)
+
+instance Unifiable Type where
+    mgu (TyApp tyl1 tyr1) (TyApp tyl2 tyr2) = do
+        sub1 <- mgu tyl1 tyl2
+        sub2 <- mgu (apply sub1 tyr1) (apply sub1 tyr2)
+        return (sub2 @@ sub1)
+    mgu (TyVar tyv) ty = varBind tyv ty
+    mgu ty (TyVar tyv) = varBind tyv ty
+    mgu (TyCon tyc1) (TyCon tyc2) | tyc1 == tyc2 = return []
+    mgu _  _ = throwError (strMsg "Types do not unify")
 
 varBind :: MonadInfer m => Var -> Type -> m (Subst Type)
 varBind tyv ty
@@ -198,7 +202,7 @@ varBind tyv ty
 infixr 3 :*>
 data Kind = Star
           | Kind :*> Kind
-          | KVar Id
+          | KVar Var
           deriving (Eq, Show)
 
 class HasKind ty where
@@ -216,3 +220,31 @@ instance HasKind Type where
 
 instance HasKind Scheme where
     kind (Forall _ ty) = kind ty
+
+instance SubstApply Kind Kind where
+    apply sub (KVar v) = case lookup v sub of
+        Nothing -> KVar v
+        Just k  -> k
+    apply sub (k1 :*> k2) = apply sub k1 :*> apply sub k2
+    apply _ k = k
+
+instance HasVars Kind where
+    fv (KVar kv) = [kv]
+    fv (k1 :*> k2) = fv k1 `union` fv k2
+    fv _ = []
+
+instance Unifiable Kind where
+    mgu (kl1 :*> kr1) (kl2 :*> kr2) = do
+        sub1 <- mgu kl1 kl2
+        sub2 <- mgu (apply sub1 kr1) (apply sub1 kr2)
+        return (sub2 @@ sub1)
+    mgu (KVar kv) k = kVarBind kv k
+    mgu k (KVar kv) = kVarBind kv k
+    mgu Star Star = return []
+    mgu _ _ = throwError $ strMsg "Kinds do not unify"
+
+kVarBind :: MonadInfer m => Var -> Kind -> m (Subst Kind)
+kVarBind kv k
+  | KVar kv == k = return []
+  | kv `elem` fv k = throwError $ KindOccursCheck (KVar kv) k
+  | otherwise = return (kv +-> k)

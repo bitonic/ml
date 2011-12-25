@@ -22,7 +22,7 @@ class MonadInfer m => MonadUnify ty m | m -> ty where
 
     freshVar   :: m Var
 
-unify :: MonadUnify Type m => Type -> Type -> m ()
+unify :: MonadUnify ty m => ty -> ty -> m ()
 unify ty1 ty2 = do
     sub1 <- getSubst
     sub2 <- mgu (apply sub1 ty1) (apply sub1 ty2)
@@ -130,6 +130,8 @@ tiPattern (Pat c pts) = do
     ty <- freshen sc
     unify ty (foldr (-->) tyv tys)
     applySubst tyv
+
+unifyKind :: MonadUnify
 
 -- inferType :: [Decl DTerm] -> Either TypeError ([Assump Scheme], [Assump Kind])
 -- inferType decls' =

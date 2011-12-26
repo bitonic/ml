@@ -3,11 +3,11 @@
 ** TODO Add type/term operators
 ** TODO Add positions (that's annoying)
 * Type checker
-** TODO Move the kinds of TyVar and TyCon in the monad
-** TODO Do kind unifications the same way as the type unification
+** DONE Move the kinds of TyVar and TyCon in the monad
+** DONE Do kind unifications the same way as the type unification
+** TODO Explicit types
 ** TODO Implicit bindings (mutual recursion)
 ** TODO Type classes
-** TODO Explicit types
 ** TODO Records (maybe)
 * CodeGen
 ** TODO Everything

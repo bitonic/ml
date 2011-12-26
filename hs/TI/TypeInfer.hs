@@ -14,9 +14,6 @@ import Fresh
 import TI.TypesTypes
 import TI.BaseEnv
 
-import Debug.Trace
-import Pretty
-
 -------------------------------------------------------------------------------
 
 class MonadInfer m => MonadUnify ty m | m -> ty where
@@ -157,7 +154,6 @@ tiDataOption :: MonadUnify Kind m => Type -> [Type] -> m Type
 tiDataOption res tys = do
     forM_ tys $ \ty -> do
         k <- kiType ty
-        sub <- getSubst
         unify k Star
         applySubst k
     return (foldr (-->) res tys)

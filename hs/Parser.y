@@ -23,6 +23,7 @@ import Syntax
   ','      { COMMA }
   data     { DATA }
   '|'      { BAR }
+  ';'      { SEMICOLON }
   var      { VAR $$ }
   con      { CON $$ }
   case     { CASE }
@@ -31,10 +32,10 @@ import Syntax
 %%
 
 
-Decls : Decl       { [$1] }
-      | Decl Decls { $1 : $2 }
+Decls : {- empty -}    { [] }
+      | Decl ';' Decls { $1 : $3 }
 
-Decl : let var '=' Term               { ValDecl $2 $4 }
+Decl : var '=' Term                   { ValDecl $1 $3 }
      | data con TypeVars '=' DataBody { DataDecl $2 (reverse $3) (reverse $5) }
 
 Term : Atom                         { $1 }

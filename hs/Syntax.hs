@@ -25,6 +25,7 @@ module Syntax
 type Id = String
 
 data Decl t = ValDecl Var t
+            | TypeSig Var Type
             | DataDecl Con [Var] DataBody
             deriving (Show, Eq)
 

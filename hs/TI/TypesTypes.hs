@@ -34,8 +34,6 @@ import qualified Data.Map as Map
 import Fresh
 import Syntax
 
-import Debug.Trace
-
 -------------------------------------------------------------------------------
 
 type Subst a = [(Var, a)]
@@ -136,6 +134,7 @@ data TypeError = TypeError String
                | OccursCheck Type Type
                | KindOccursCheck Kind Kind
                | DifferentKinds Type Kind Type Kind
+               | TooGeneralTypeSig Scheme Scheme
                deriving (Eq)
 
 instance Error TypeError where
@@ -145,10 +144,7 @@ lookupInfer :: MonadInfer m => m (Assump a) -> (Id -> TypeError) -> Id -> m a
 lookupInfer m f v = do
    xM <- liftM (Map.lookup v) m
    case xM of
-       Nothing -> do
-           tys <- getTypes
-           () <- trace (show $ Map.lookup v tys) (return ())
-           throwError $ f v
+       Nothing -> throwError $ f v
        Just x  -> return x
 
 addType :: MonadInfer m => Id -> Scheme -> m ()

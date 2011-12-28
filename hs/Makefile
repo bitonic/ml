@@ -7,3 +7,6 @@ parser: Parser.y
 
 i: lexer parser
 	ghci Load.hs
+
+clean:
+	rm -f Parser.hs Lexer.hs

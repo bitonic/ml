@@ -24,7 +24,7 @@ import TI.TypesTypes
 -------------------------------------------------------------------------------
 
 prettyML :: [Decl FullTerm] -> String
-prettyML = render . vcat . map (pDecl (hsep . (map pPattern)) pPattern)
+prettyML = render . vcat . map (\d -> pDecl (hsep . (map pPattern)) pPattern d <> ";")
 
 pVar :: Var -> Doc
 pVar = text . unVar
@@ -33,7 +33,7 @@ pCon :: Con -> Doc
 pCon = text . unCon
 
 prettyDesugar :: [Decl DTerm] -> String
-prettyDesugar = render . vcat . map (pDecl pVar pVar)
+prettyDesugar = render . vcat . map (\d -> pDecl pVar pVar d <> ";")
 
 pTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
 pTerm f l (App (App (Con (ConN "(,)")) t1) t2) =
@@ -83,7 +83,8 @@ pCases tf (case' : cases) = (space <+> p case') $$
 pCases _ _ = "Parser.pCases: Received 0 cases"
 
 pDecl :: (fn -> Doc) -> (lt -> Doc) -> Decl (Term fn lt) -> Doc
-pDecl f l (ValDecl v t) = sep ["let" <+> pVar v <+> equals, nest 4 (pTerm f l t)]
+pDecl f l (ValDecl v t) = sep [pVar v <+> equals, nest 4 (pTerm f l t)]
+pDecl _ _ (TypeSig v ty) = pVar v <+> ":" <+> pType ty
 pDecl _ _ (DataDecl c tyvs dbody)
     = "data" <+> pCon c <+> hsep (map pVar tyvs) <+> "where" $$
       nest 4 (pDataBody dbody)
@@ -165,3 +166,6 @@ instance Show TypeError where
     show (DifferentKinds ty1 k1 ty2 k2) =
          "Different kinds, \"" ++ prettyType ty1 ++ " : " ++ prettyKind k1 ++
          "\" and \"" ++ prettyType ty2 ++ " : " ++ prettyKind k2
+    show (TooGeneralTypeSig ts ty) =
+         "Type signature \"" ++ prettyScheme ts ++
+         "\" is too general for inferred type \"" ++ prettyScheme ty ++ "\""

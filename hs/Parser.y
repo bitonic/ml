@@ -24,6 +24,7 @@ import Syntax
   data     { DATA }
   '|'      { BAR }
   ';'      { SEMICOLON }
+  ':'      { COLON }
   var      { VAR $$ }
   con      { CON $$ }
   case     { CASE }
@@ -36,6 +37,7 @@ Decls : {- empty -}    { [] }
       | Decl ';' Decls { $1 : $3 }
 
 Decl : var '=' Term                   { ValDecl $1 $3 }
+     | var ':' TypeSig                { TypeSig $1 $3 }
      | data con TypeVars '=' DataBody { DataDecl $2 (reverse $3) (reverse $5) }
 
 Term : Atom                         { $1 }
@@ -67,7 +69,6 @@ Pattern : PatternAtom    { $1 }
         | con PatternCon { Pat $1 (reverse $2) }
 
 PatternCon : PatternCon Pattern { $2 : $1 }
-           | Pattern            { [$1] }
            | {- empty -}        { [] }
 
 PatternParens : con         { Pat $1 [] }
@@ -89,17 +90,19 @@ DataBody : DataOption { [$1] }
 
 DataOption : con TypeSigs { ($1, reverse $2) }
 
-TypeSigs : TypeSigs TyAtom { $2 : $1 }
-         | TyAtom { [$1] }
-         | {- empty -} { [] }
+TypeSigs : TypeSigs TypeAtom { $2 : $1 }
+         | {- empty -}       { [] }
 
-TypeSig : TyAtom { $1 }
-        | TypeSig TyAtom { TyApp $1 $2 }
+TypeSig : TypeApp              { $1 }
+        | TypeApp "->" TypeSig { TyApp (TyApp (TyCon (con "(->)")) $1) $3 }
 
-TyAtom : con { TyCon $1 }
-       | var { TyVar $1 }
-       | Tuple(TypeSig) { tupleType $1 }
-       | '(' TypeSig ')' { $2 }
+TypeApp : TypeAtom         { $1 }
+        | TypeApp TypeAtom { TyApp $1 $2 }
+
+TypeAtom : con { TyCon $1 }
+         | var { TyVar $1 }
+         | Tuple(TypeSig) { tupleType $1 }
+         | '(' TypeSig ')' { $2 }
 
 {
 

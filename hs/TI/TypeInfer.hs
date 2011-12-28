@@ -1,4 +1,4 @@
-{-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans -fno-warn-unused-do-bind #-}
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, MultiParamTypeClasses,
              FunctionalDependencies, IncoherentInstances, ScopedTypeVariables #-}
 module TI.TypeInfer where
@@ -196,17 +196,52 @@ tiDecl (ValDecl v t) = do
     putTypes tys
     addVar v sc
   where
-    term = do
-        tyv <- freshTyVar Star
-        addVar v (toScheme tyv)
-        ty <- tiTerm t
-        (`unify` ty) =<< applySubst tyv
-        applySubst ty
+    lessGeneral (TyCon _) (TyVar _) = True
+    lessGeneral (TyApp l1 r1) (TyApp l2 r2) = lessGeneral l1 l2 || lessGeneral r1 r2
+    lessGeneral _ _ = False
+
+    explicit = do
+      ty1 <- lookupVar v >>= freshen
+      ty2 <- tiTerm t
+      if ty2 `lessGeneral` ty1 then
+          do ts <- lookupVar v
+             ty <- quantify (fv ty2) ty2
+             throwError $ TooGeneralTypeSig ts ty
+        else return ty1
+
+    term = catchError explicit $ \e -> case e of
+        UnboundVar v' -> if v == v' then
+                          do tyv <- freshTyVar Star
+                             addVar v (toScheme tyv)
+                             ty <- tiTerm t
+                             return tyv
+                             (`unify` ty) =<< applySubst tyv
+                             applySubst ty
+                        else throwError e
+        _ -> throwError e
 tiDecl (DataDecl tyc tyvs body) = do
     ks <- getKinds
     k <- evalStateT (kiDataDecl tyc tyvs body) ([] :: Subst Kind)
     putKinds ks
     addTyCon tyc k
+tiDecl _ = return ()
+
+scanTypeSigs :: MonadInfer m => [Decl DTerm] -> m ()
+scanTypeSigs decls =
+    forM_ decls $ \decl -> flip evalStateT ([] :: Subst Kind) $ do
+        case decl of
+            TypeSig v ty -> do
+                kCtx <- getKinds
+
+                let tyvs = fv ty
+                forM tyvs $ \tyv -> liftM KVar freshVar >>= addTyVar tyv
+                k <- kiType ty
+                unify k Star
+                (Forall ks ty') <- quantify (fv ty) ty
+                addVar v $ Forall (map replaceVars ks) ty'
+
+                putKinds kCtx
+            _ -> return ()
 
 -------------------------------------------------------------------------------
 
@@ -214,5 +249,9 @@ typeInfer :: [Decl DTerm] -> Either TypeError (Assump Scheme, Assump Kind)
 typeInfer decls =
     fmap (\(tys, ks) -> (Map.difference tys baseTypes, Map.difference ks baseKinds)) res
   where
+    go = do
+        scanTypeSigs decls
+        mapM_ tiDecl decls
+
     res :: Either TypeError InferState =
-        evalFresh (runErrorT (execStateT (mapM_ tiDecl decls) (baseTypes, baseKinds))) (0 :: Integer)
+        evalFresh (runErrorT (execStateT go (baseTypes, baseKinds))) (0 :: Integer)

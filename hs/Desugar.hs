@@ -11,7 +11,8 @@ desugar decls = evalFresh (mapM dDecl decls) (0 :: Integer)
 
 dDecl :: (MonadFresh c m, Show c) => Decl FullTerm -> m (Decl DTerm)
 dDecl (ValDecl v t) = liftM (ValDecl v) (dTerm t)
-dDecl (DataDecl tyc tyvs body) = return (DataDecl tyc tyvs body)
+dDecl (TypeSig v ts) = return $ TypeSig v ts
+dDecl (DataDecl c tyvs body) = return $ DataDecl c tyvs body
 
 freshVar :: (Show c, MonadFresh c m) => m Var
 freshVar = liftM (VarN . ("_v" ++) . show) fresh

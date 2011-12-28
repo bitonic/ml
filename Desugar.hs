@@ -13,6 +13,9 @@ dDecl :: (MonadFresh c m, Show c) => Decl FullTerm -> m (Decl DTerm)
 dDecl (ValDecl v t) = liftM (ValDecl v) (dTerm t)
 dDecl (TypeSig v ts) = return $ TypeSig v ts
 dDecl (DataDecl c tyvs body) = return $ DataDecl c tyvs body
+dDecl (ClassDecl tyc tyvs methods) = return $ ClassDecl tyc tyvs methods
+dDecl (ClassInst tyc tys methods) =
+    liftM (ClassInst tyc tys) $ mapM (\(v, t) -> liftM (v,) (dTerm t)) methods
 
 freshVar :: (Show c, MonadFresh c m) => m Var
 freshVar = liftM (VarN . ("_v" ++) . show) fresh

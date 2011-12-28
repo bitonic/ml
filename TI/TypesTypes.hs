@@ -10,7 +10,6 @@ module TI.TypesTypes
        , (+->)
        , (@@)
        , TypeError (..)
-       , mgu
        , varBind
        , Scheme (..)
        , toScheme

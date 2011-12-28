@@ -1,30 +1,33 @@
 {-# LANGUAGE FlexibleContexts, TypeSynonymInstances, FunctionalDependencies,
              MultiParamTypeClasses, FlexibleInstances, UndecidableInstances #-}
 module TI.TypesTypes
-       -- ( Kind (..)
-       -- , (-->)
-       -- , HasKind (..)
-       -- , Subst
-       -- , Types (..)
-       -- , (+->)
-       -- , (@@)
-       -- , TypeError (..)
-       -- , mgu
-       -- , varBind
-       -- , Scheme (..)
-       -- , toScheme
-       -- , quantify
-       -- , Instantiate (..)
-       -- , Assump
-       -- , lookupVar
-       -- , lookupCon
-       -- , lookupTyVar
-       -- , lookupTyCon
-       -- , MonadInfer (..)
-       -- , TyVar
-       -- , TyCon
-       -- )
-       where
+       ( Kind (..)
+       , (-->)
+       , HasKind (..)
+       , Subst
+       , HasVars (..)
+       , SubstApply (..)
+       , (+->)
+       , (@@)
+       , TypeError (..)
+       , mgu
+       , varBind
+       , Scheme (..)
+       , toScheme
+       , quantify
+       , Instantiate (..)
+       , Assump
+       , lookupVar
+       , lookupCon
+       , lookupTyVar
+       , lookupTyCon
+       , MonadInfer (..)
+       , addCon
+       , addVar
+       , addTyCon
+       , addTyVar
+       , Unifiable (..)
+       ) where
 
 import Control.Monad.Error
 import Data.List (union, nub)

@@ -5,7 +5,7 @@
 * Type checker
 ** DONE Move the kinds of TyVar and TyCon in the monad
 ** DONE Do kind unifications the same way as the type unification
-** TODO Explicit types
+** DONE Explicit types
 ** TODO Implicit bindings (mutual recursion)
 ** TODO Type classes
 ** TODO Records (maybe)

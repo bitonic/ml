@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans -fno-warn-unused-do-bind #-}
 {-# LANGUAGE FlexibleInstances, FlexibleContexts, MultiParamTypeClasses,
              FunctionalDependencies, IncoherentInstances, ScopedTypeVariables #-}
-module TI.TypeInfer where
+module TI.TypeInfer (typeInfer) where
 
 import Control.Monad.Trans
 import Control.Monad.Error
@@ -65,7 +65,7 @@ updateTypes = do
 freshTyVar :: MonadInfer m => Kind -> m Type
 freshTyVar k = do
     ty <- freshVar
-    addKind (unVar ty) k
+    addTyVar ty k
     return (TyVar ty)
 
 freshen :: MonadInfer m => Scheme -> m Type

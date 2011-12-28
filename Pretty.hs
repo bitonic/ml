@@ -24,7 +24,7 @@ import TI.TypesTypes
 -------------------------------------------------------------------------------
 
 prettyML :: [Decl FullTerm] -> String
-prettyML = render . vcat . map (\d -> pDecl (hsep . (map pPattern)) pPattern d <> ";")
+prettyML = render . vcat . map (\d -> pDecl (hsep . (map pPattern)) pPattern d)
 
 pVar :: Var -> Doc
 pVar = text . unVar
@@ -33,7 +33,7 @@ pCon :: Con -> Doc
 pCon = text . unCon
 
 prettyDesugar :: [Decl DTerm] -> String
-prettyDesugar = render . vcat . map (\d -> pDecl pVar pVar d <> ";")
+prettyDesugar = render . vcat . map (pDecl pVar pVar)
 
 pTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
 pTerm f l (App (App (Con (ConN "(,)")) t1) t2) =
@@ -83,11 +83,19 @@ pCases tf (case' : cases) = (space <+> p case') $$
 pCases _ _ = "Parser.pCases: Received 0 cases"
 
 pDecl :: (fn -> Doc) -> (lt -> Doc) -> Decl (Term fn lt) -> Doc
-pDecl f l (ValDecl v t) = sep [pVar v <+> equals, nest 4 (pTerm f l t)]
-pDecl _ _ (TypeSig v ty) = pVar v <+> ":" <+> pType ty
+pDecl f l (ValDecl v t) = sep [pVar v <+> "=", nest 4 (pTerm f l t)] <> ";"
+pDecl _ _ (TypeSig v ty) = pVar v <+> ":" <+> pType ty <> ";"
 pDecl _ _ (DataDecl c tyvs dbody)
     = "data" <+> pCon c <+> hsep (map pVar tyvs) <+> "where" $$
-      nest 4 (pDataBody dbody)
+      nest 4 (pDataBody dbody) <> ";"
+pDecl _ _ (ClassDecl tyc tyvs methods)
+    = "class" <+> pCon tyc <+> hsep (map pVar tyvs) <+> "where" <+> "{" $$
+      nest 4 (vcat (map (\(v, ty) -> pVar v <+> ":" <+> pType ty) methods)) $$
+      "}"
+pDecl f l (ClassInst tyc tys methods)
+    = "instance" <+> pCon tyc <+> hsep (map pType tys) <+> "where" <+> "{" $$
+      nest 4 (vcat (map (\(v, t) -> sep [pVar v <+> "=", nest 4 (pTerm f l t)]) methods)) $$
+      "}"
 
 pDataBody :: DataBody -> Doc
 pDataBody (opt : opts) = space <+> p opt $$ vcat (map (\opt' -> "|" <+> p opt') opts)

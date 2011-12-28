@@ -6,8 +6,9 @@
 ** DONE Move the kinds of TyVar and TyCon in the monad
 ** DONE Do kind unifications the same way as the type unification
 ** DONE Explicit types
-** TODO Implicit bindings (mutual recursion)
 ** TODO Type classes
+** TODO Implicit bindings (mutual recursion) - explicit types partly
+   solve the problem
 ** TODO Records (maybe)
 * CodeGen
 ** TODO Everything

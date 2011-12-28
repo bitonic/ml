@@ -27,6 +27,8 @@ type Id = String
 data Decl t = ValDecl Var t
             | TypeSig Var Type
             | DataDecl Con [Var] DataBody
+            | ClassDecl Con [Var] [(Var, Type)]
+            | ClassInst Con [Type] [(Var, t)]
             deriving (Show, Eq)
 
 newtype Var = VarN {unVar :: Id}

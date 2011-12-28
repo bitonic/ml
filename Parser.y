@@ -29,16 +29,28 @@ import Syntax
   con      { CON $$ }
   case     { CASE }
   of       { OF }
+  '{'      { LCURLY }
+  '}'      { RCURLY }
+  class    { CLASS }
+  where    { WHERE }
+  instance { INSTANCE }
 
 %%
 
 
-Decls : {- empty -}    { [] }
-      | Decl ';' Decls { $1 : $3 }
+Decls : {- empty -} { [] }
+      | Decl Decls  { $1 : $2 }
 
-Decl : var '=' Term                   { ValDecl $1 $3 }
-     | var ':' TypeSig                { TypeSig $1 $3 }
-     | data con TypeVars '=' DataBody { DataDecl $2 (reverse $3) (reverse $5) }
+Decl : ValDecl             { $1 }
+     | var ':' TypeSig ';' { TypeSig $1 $3 }
+     | DataDecl            { $1 }
+     | ClassDecl           { $1 }
+     | ClassInst           { $1 }
+
+ValDecl : var '=' Term ';' { ValDecl $1 $3 }
+
+DataDecl :
+    data con TypeVars '=' DataBody ';' { DataDecl $2 (reverse $3) (reverse $5) }
 
 Term : Atom                         { $1 }
      | 'λ' Patterns "->" Term       { Abs (reverse $2) $4 }
@@ -103,6 +115,21 @@ TypeAtom : con { TyCon $1 }
          | var { TyVar $1 }
          | Tuple(TypeSig) { tupleType $1 }
          | '(' TypeSig ')' { $2 }
+
+TypeAtoms : TypeAtom           { [$1] }
+          | TypeAtoms TypeAtom { $2 : $1 }
+
+ClassDecl
+    : class con TypeVars where '{' ClassMethods '}' { ClassDecl $2 $3 $6 }
+
+ClassMethods : {- empty -}                      { [] }
+             | var ':' TypeSig ';' ClassMethods { ($1, $3) : $5 }
+
+ClassInst
+    : instance con TypeAtoms where '{' InstMethods '}' { ClassInst $2 $3 $6 }
+
+InstMethods : {- empty -}                  { [] }
+            | var '=' Term ';' InstMethods { ($1, $3) : $5 }
 
 {
 

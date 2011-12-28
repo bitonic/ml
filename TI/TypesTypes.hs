@@ -261,3 +261,5 @@ kVarBind kv k
   | KVar kv == k = return []
   | kv `elem` fv k = throwError $ KindOccursCheck (KVar kv) k
   | otherwise = return (kv +-> k)
+
+-------------------------------------------------------------------------------

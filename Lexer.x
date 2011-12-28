@@ -34,6 +34,11 @@ tokens :-
   where               { const WHERE }
   :                   { const COLON }
   ";"                 { const SEMICOLON }
+  "{"                 { const LCURLY }
+  "}"                 { const RCURLY }
+  class               { const CLASS }
+  where               { const WHERE }
+  instance            { const INSTANCE }
   $digit+             { INTLIT }
   $digit+ "." $digit+ { REALLIT }
   [a-z]@id            { VAR . var }
@@ -59,6 +64,10 @@ data Token = LET
            | WHERE
            | COLON
            | SEMICOLON
+           | LCURLY
+           | RCURLY
+           | CLASS
+           | INSTANCE
            deriving (Show, Eq)
 
 lexML :: String -> [Token]

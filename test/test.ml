@@ -72,3 +72,11 @@ insert = \x (In t) -> case t of
   | Branch l r -> (case leq x y of
          True -> branch (insert x l) r
        | False -> branch l (insert x r));
+
+class Show a where {
+    show : a -> List Char;
+}
+
+instance Show Int where {
+    show = undefined;
+}

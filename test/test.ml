@@ -41,7 +41,7 @@ join = \m -> case m of
     Just (Just x) -> Just x
   | Nothing       -> Nothing;
 
-subtract : Int -> Int -> Int;
+subtract : Show a => Int -> Int -> Int;
 subtract = \x y -> plus x (negate y);
 
 times = \x y -> case isZero y of

@@ -6,17 +6,18 @@ module Pretty
        , pType
        , pParensType
 
-       , prettyScheme
-       , prettyType
-       , prettyAssump
-       -- , prettySubst
-       , pScheme
-       , pKind
-       , prettyKind
+       -- , prettyScheme
+       -- , prettyType
+       -- , prettyAssump
+       -- -- , prettySubst
+       -- , pScheme
+       -- , pKind
+       -- , prettyKind
        ) where
 
 import Text.PrettyPrint
 import qualified Data.Map as Map
+import Data.List (intersperse)
 
 import Syntax
 import TI.TypesTypes
@@ -62,12 +63,13 @@ parensTerm f l t = case t of
   where
     d = pTerm f l t
 
+pTuple :: (a -> Doc) -> [a] -> Doc
+pTuple f l = "(" <> hcat (intersperse ", " (map f l)) <> ")"
+
 pPattern :: Pattern -> Doc
 pPattern (VarPat v) = pVar v
-pPattern (Pat (ConN "(,)") [pt1, pt2]) =
-    "(" <>  pPattern pt1 <> "," <+> pPattern pt2 <> ")"
-pPattern (Pat (ConN "(,,)") [pt1, pt2, pt3]) =
-    "(" <>  pPattern pt1 <> "," <+> pPattern pt2 <> "," <+> pPattern pt3 <> ")"
+pPattern (Pat (ConN "(,)") pts@[_, _]) = pTuple pPattern pts
+pPattern (Pat (ConN "(,,)") pts@[_, _, _]) = pTuple pPattern pts
 pPattern (Pat c pts) = parens (pCon c <+> hsep (map pPattern pts))
 pPattern (IntPat i) = text i
 
@@ -84,16 +86,18 @@ pCases _ _ = "Parser.pCases: Received 0 cases"
 
 pDecl :: (fn -> Doc) -> (lt -> Doc) -> Decl (Term fn lt) -> Doc
 pDecl f l (ValDecl v t) = sep [pVar v <+> "=", nest 4 (pTerm f l t)] <> ";"
-pDecl _ _ (TypeSig v ty) = pVar v <+> ":" <+> pType ty <> ";"
+pDecl _ _ (TypeSig v ty) = pVar v <+> ":" <+> pQual ty <> ";"
 pDecl _ _ (DataDecl c tyvs dbody)
     = "data" <+> pCon c <+> hsep (map pVar tyvs) <+> "where" $$
       nest 4 (pDataBody dbody) <> ";"
-pDecl _ _ (ClassDecl tyc tyvs methods)
-    = "class" <+> pCon tyc <+> hsep (map pVar tyvs) <+> "where" <+> "{" $$
-      nest 4 (vcat (map (\(v, ty) -> pVar v <+> ":" <+> pType ty) methods)) $$
+pDecl _ _ (ClassDecl pds tyc tyvs methods)
+    = "class" <+> pConstraints pds <+> pCon tyc <+>
+      hsep (map pVar tyvs) <+> "where" <+> "{" $$
+      nest 4 (vcat (map (\(v, ty) -> pVar v <+> ":" <+> pQual ty) methods)) $$
       "}"
-pDecl f l (ClassInst tyc tys methods)
-    = "instance" <+> pCon tyc <+> hsep (map pType tys) <+> "where" <+> "{" $$
+pDecl f l (ClassInst pds tyc tys methods)
+    = "instance" <+> pConstraints pds <+> pCon tyc <+>
+      hsep (map pType tys) <+> "where" <+> "{" $$
       nest 4 (vcat (map (\(v, t) -> sep [pVar v <+> "=", nest 4 (pTerm f l t)]) methods)) $$
       "}"
 
@@ -106,14 +110,26 @@ pDataBody _ = "Parser.pDataBody: Received 0 options"
 pType :: Type -> Doc
 pType (TyApp (TyApp (TyCon (ConN "(->)")) ts1) ts2) =
     pParensType ts1 <+> "->" <+> pType ts2
-pType (TyApp (TyApp (TyCon (ConN "(,)")) ts1) ts2) =
-    "(" <> pType ts1 <> "," <+> pType ts2 <> ")"
+pType (TyApp (TyApp (TyCon (ConN "(,)")) ts1) ts2) = pTuple pType [ts1, ts2]
 pType (TyApp (TyApp (TyApp (TyCon (ConN "(,,)")) ts1) ts2) ts3) =
-    "(" <> pType ts1 <> "," <+> pType ts2 <> "," <+> pType ts3 <> ")"
+    pTuple pType [ts1, ts2, ts3]
 pType (TyVar tyv) = pVar tyv
 pType (TyCon tyc) = pCon tyc
 pType (TyApp ty1 ty2) = pType ty1 <+> pParensType ty2
 pType (TyGen i) = text (show i)
+
+pQual :: Qual -> Doc
+pQual (pds :=> ty) = pConstraints pds <+> pType ty
+
+pConstraints :: [Pred] -> Doc
+pConstraints [] = empty
+pConstraints pds = pPreds pds <+> "=>"
+
+pPreds :: [Pred] -> Doc
+pPreds = pTuple pPred
+
+pPred :: Pred -> Doc
+pPred (Pred tyc tys) = pCon tyc <+> hcat (map pParensType tys)
 
 pParensType :: Type -> Doc
 pParensType ty = case ty of
@@ -126,54 +142,54 @@ pParensType ty = case ty of
 
 -------------------------------------------------------------------------------
 
-prettyScheme :: Scheme -> String
-prettyScheme = render . pScheme
+-- prettyScheme :: Scheme -> String
+-- prettyScheme = render . pScheme
 
-prettyType :: Type -> String
-prettyType = render . pType
+-- prettyType :: Type -> String
+-- prettyType = render . pType
 
-prettyAssump :: (a -> Doc) -> Assump a -> String
-prettyAssump f = render . pAssump f
+-- prettyAssump :: (a -> Doc) -> Assump a -> String
+-- prettyAssump f = render . pAssump f
 
-pAssump :: (a -> Doc) -> Assump a -> Doc
-pAssump f m = vcat $ map (\(x, ty) -> text x <+> ":" <+> f ty) (Map.toList m)
+-- pAssump :: (a -> Doc) -> Assump a -> Doc
+-- pAssump f m = vcat $ map (\(x, ty) -> text x <+> ":" <+> f ty) (Map.toList m)
 
-pScheme :: Scheme -> Doc
-pScheme (Forall _ ty) = pType ty
+-- pScheme :: Scheme -> Doc
+-- pScheme (Forall _ ty) = pType ty
 
-prettyKind :: Kind -> String
-prettyKind = render . pKind
+-- prettyKind :: Kind -> String
+-- prettyKind = render . pKind
 
-pKind :: Kind -> Doc
-pKind Star = "*"
-pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
-  where
-    p Star = "*"
-    p k = parens (pKind k)
-pKind (KVar v) = pVar v
+-- pKind :: Kind -> Doc
+-- pKind Star = "*"
+-- pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
+--   where
+--     p Star = "*"
+--     p k = parens (pKind k)
+-- pKind (KVar v) = pVar v
 
--- prettySubst :: Subst -> String
--- prettySubst = render . vcat . map (\(tyv, ty) -> text tyv <+> "=>" <+> pType ty)
+-- -- prettySubst :: Subst -> String
+-- -- prettySubst = render . vcat . map (\(tyv, ty) -> text tyv <+> "=>" <+> pType ty)
 
-instance Show TypeError where
-    show (TypeError s) = "TypeError: " ++ s
-    show (UnboundVar v) = "Unboud variable \"" ++ unVar v ++ "\""
-    show (UnboundConstructor c) = "Unbound constructor \"" ++ unCon c ++ "\""
-    show (MismatchingKinds tyv k1 k2) =
-        "Mismatching kinds for type variable " ++ tyv ++ ": \"" ++
-        prettyKind k1 ++ "\" and \"" ++ prettyKind k2 ++ "\""
-    show (UnboundTypeVar tyv) = "Unbound type variable \"" ++ unVar tyv ++ "\""
-    show (UnboundTypeConstructor tyc) =
-        "Unbound type constructor \"" ++ unCon tyc ++ "\""
-    show (OccursCheck ty1 ty2) =
-         "Occurs check fails when unifying \"" ++ prettyType ty1 ++ "\" with \"" ++
-         prettyType ty2 ++ "\""
-    show (KindOccursCheck k1 k2) =
-         "Occurs check fails when unifying \"" ++ prettyKind k1 ++ "\" with \"" ++
-         prettyKind k2 ++ "\""
-    show (DifferentKinds ty1 k1 ty2 k2) =
-         "Different kinds, \"" ++ prettyType ty1 ++ " : " ++ prettyKind k1 ++
-         "\" and \"" ++ prettyType ty2 ++ " : " ++ prettyKind k2
-    show (TooGeneralTypeSig ts ty) =
-         "Type signature \"" ++ prettyScheme ts ++
-         "\" is too general for inferred type \"" ++ prettyScheme ty ++ "\""
+-- instance Show TypeError where
+--     show (TypeError s) = "TypeError: " ++ s
+--     show (UnboundVar v) = "Unboud variable \"" ++ unVar v ++ "\""
+--     show (UnboundConstructor c) = "Unbound constructor \"" ++ unCon c ++ "\""
+--     show (MismatchingKinds tyv k1 k2) =
+--         "Mismatching kinds for type variable " ++ tyv ++ ": \"" ++
+--         prettyKind k1 ++ "\" and \"" ++ prettyKind k2 ++ "\""
+--     show (UnboundTypeVar tyv) = "Unbound type variable \"" ++ unVar tyv ++ "\""
+--     show (UnboundTypeConstructor tyc) =
+--         "Unbound type constructor \"" ++ unCon tyc ++ "\""
+--     show (OccursCheck ty1 ty2) =
+--          "Occurs check fails when unifying \"" ++ prettyType ty1 ++ "\" with \"" ++
+--          prettyType ty2 ++ "\""
+--     show (KindOccursCheck k1 k2) =
+--          "Occurs check fails when unifying \"" ++ prettyKind k1 ++ "\" with \"" ++
+--          prettyKind k2 ++ "\""
+--     show (DifferentKinds ty1 k1 ty2 k2) =
+--          "Different kinds, \"" ++ prettyType ty1 ++ " : " ++ prettyKind k1 ++
+--          "\" and \"" ++ prettyType ty2 ++ " : " ++ prettyKind k2
+--     show (TooGeneralTypeSig ts ty) =
+--          "Type signature \"" ++ prettyScheme ts ++
+--          "\" is too general for inferred type \"" ++ prettyScheme ty ++ "\""

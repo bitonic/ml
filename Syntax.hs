@@ -10,6 +10,8 @@ module Syntax
        , Literal (..)
        , Pattern (..)
        , Term (..)
+       , Qual (..)
+       , Pred (..)
          -- * Instances
        , FullTerm
        , DTerm
@@ -25,10 +27,10 @@ module Syntax
 type Id = String
 
 data Decl t = ValDecl Var t
-            | TypeSig Var Type
+            | TypeSig Var Qual
             | DataDecl Con [Var] DataBody
-            | ClassDecl Con [Var] [(Var, Type)]
-            | ClassInst Con [Type] [(Var, t)]
+            | ClassDecl [Pred] Con [Var] [(Var, Qual)]
+            | ClassInst [Pred] Con [Type] [(Var, t)]
             deriving (Show, Eq)
 
 newtype Var = VarN {unVar :: Id}
@@ -54,6 +56,9 @@ data Type = TyCon Con
           | TyGen Int
           deriving (Show, Eq)
 
+data Qual = [Pred] :=> Type
+          deriving (Show, Eq)
+
 data Literal = IntLit String
              | RealLit String
              deriving (Show, Eq)
@@ -71,6 +76,9 @@ data Term fn lt = Var Var
                 | Literal Literal
                 | Case (Term fn lt) [(Pattern, (Term fn lt))]
                 deriving (Show, Eq)
+
+data Pred = Pred Con [Type]
+          deriving (Show, Eq)
 
 type DataBody = [(Con, [Type])]
 

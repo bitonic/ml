@@ -25,6 +25,7 @@ tokens :-
   "("                 { const LPAREN }
   ")"                 { const RPAREN }
   "->"                { const ARROW }
+  "=>"                { const DOUBLEARROW }
   \\                  { const LAMBDA }
   ","                 { const COMMA }
   data                { const DATA }
@@ -68,6 +69,7 @@ data Token = LET
            | RCURLY
            | CLASS
            | INSTANCE
+           | DOUBLEARROW
            deriving (Show, Eq)
 
 lexML :: String -> [Token]

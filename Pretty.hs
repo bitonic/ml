@@ -6,13 +6,13 @@ module Pretty
        , pType
        , pParensType
 
-       -- , prettyScheme
-       -- , prettyType
-       -- , prettyAssump
-       -- -- , prettySubst
-       -- , pScheme
-       -- , pKind
-       -- , prettyKind
+       , prettyScheme
+       , prettyType
+       , prettyAssump
+       -- , prettySubst
+       , pScheme
+       , pKind
+       , prettyKind
        ) where
 
 import Text.PrettyPrint
@@ -50,7 +50,7 @@ pTerm f l (Let pt t1 t2) = sep [ "let" <+> l pt <+> equals <+> pTerm f l t1 <+> 
                                ]
 pTerm _ _ (Literal lit) = pLiteral lit
 pTerm f l (Case t cases) = ("case" <+> pTerm f l t <+> "of") $+$
-                           nest 4 (pCases (pTerm f l) cases)
+                           nest 2 (pCases (pTerm f l) cases)
 
 parensTerm :: (fn -> Doc) -> (lt -> Doc) -> Term fn lt -> Doc
 parensTerm f l t = case t of
@@ -81,7 +81,7 @@ pCases :: (a -> Doc) -> [(Pattern, a)] -> Doc
 pCases tf (case' : cases) = (space <+> p case') $$
                             vcat (map (\case'' -> "|" <+> p case'') cases)
   where
-    p (pt, t) = pPattern pt <+> "->" <+> tf t
+    p (pt, t) = sep [pPattern pt <+> "->", nest 2 (tf t)]
 pCases _ _ = "Parser.pCases: Received 0 cases"
 
 pDecl :: (fn -> Doc) -> (lt -> Doc) -> Decl (Term fn lt) -> Doc
@@ -142,54 +142,54 @@ pParensType ty = case ty of
 
 -------------------------------------------------------------------------------
 
--- prettyScheme :: Scheme -> String
--- prettyScheme = render . pScheme
+prettyScheme :: Scheme -> String
+prettyScheme = render . pScheme
 
--- prettyType :: Type -> String
--- prettyType = render . pType
+prettyType :: Type -> String
+prettyType = render . pType
 
--- prettyAssump :: (a -> Doc) -> Assump a -> String
--- prettyAssump f = render . pAssump f
+prettyAssump :: (a -> Doc) -> Assump a -> String
+prettyAssump f = render . pAssump f
 
--- pAssump :: (a -> Doc) -> Assump a -> Doc
--- pAssump f m = vcat $ map (\(x, ty) -> text x <+> ":" <+> f ty) (Map.toList m)
+pAssump :: (a -> Doc) -> Assump a -> Doc
+pAssump f m = vcat $ map (\(x, ty) -> text x <+> ":" <+> f ty) (Map.toList m)
 
--- pScheme :: Scheme -> Doc
--- pScheme (Forall _ ty) = pType ty
+pScheme :: Scheme -> Doc
+pScheme (Forall _ ty) = pType ty
 
--- prettyKind :: Kind -> String
--- prettyKind = render . pKind
+prettyKind :: Kind -> String
+prettyKind = render . pKind
 
--- pKind :: Kind -> Doc
--- pKind Star = "*"
--- pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
---   where
---     p Star = "*"
---     p k = parens (pKind k)
--- pKind (KVar v) = pVar v
+pKind :: Kind -> Doc
+pKind Star = "*"
+pKind (k1 :*> k2) = p k1 <+> "->" <+> pKind k2
+  where
+    p Star = "*"
+    p k = parens (pKind k)
+pKind (KVar v) = pVar v
 
--- -- prettySubst :: Subst -> String
--- -- prettySubst = render . vcat . map (\(tyv, ty) -> text tyv <+> "=>" <+> pType ty)
+-- prettySubst :: Subst -> String
+-- prettySubst = render . vcat . map (\(tyv, ty) -> text tyv <+> "=>" <+> pType ty)
 
--- instance Show TypeError where
---     show (TypeError s) = "TypeError: " ++ s
---     show (UnboundVar v) = "Unboud variable \"" ++ unVar v ++ "\""
---     show (UnboundConstructor c) = "Unbound constructor \"" ++ unCon c ++ "\""
---     show (MismatchingKinds tyv k1 k2) =
---         "Mismatching kinds for type variable " ++ tyv ++ ": \"" ++
---         prettyKind k1 ++ "\" and \"" ++ prettyKind k2 ++ "\""
---     show (UnboundTypeVar tyv) = "Unbound type variable \"" ++ unVar tyv ++ "\""
---     show (UnboundTypeConstructor tyc) =
---         "Unbound type constructor \"" ++ unCon tyc ++ "\""
---     show (OccursCheck ty1 ty2) =
---          "Occurs check fails when unifying \"" ++ prettyType ty1 ++ "\" with \"" ++
---          prettyType ty2 ++ "\""
---     show (KindOccursCheck k1 k2) =
---          "Occurs check fails when unifying \"" ++ prettyKind k1 ++ "\" with \"" ++
---          prettyKind k2 ++ "\""
---     show (DifferentKinds ty1 k1 ty2 k2) =
---          "Different kinds, \"" ++ prettyType ty1 ++ " : " ++ prettyKind k1 ++
---          "\" and \"" ++ prettyType ty2 ++ " : " ++ prettyKind k2
---     show (TooGeneralTypeSig ts ty) =
---          "Type signature \"" ++ prettyScheme ts ++
---          "\" is too general for inferred type \"" ++ prettyScheme ty ++ "\""
+instance Show TypeError where
+    show (TypeError s) = "TypeError: " ++ s
+    show (UnboundVar v) = "Unboud variable \"" ++ unVar v ++ "\""
+    show (UnboundConstructor c) = "Unbound constructor \"" ++ unCon c ++ "\""
+    show (MismatchingKinds tyv k1 k2) =
+        "Mismatching kinds for type variable " ++ tyv ++ ": \"" ++
+        prettyKind k1 ++ "\" and \"" ++ prettyKind k2 ++ "\""
+    show (UnboundTypeVar tyv) = "Unbound type variable \"" ++ unVar tyv ++ "\""
+    show (UnboundTypeConstructor tyc) =
+        "Unbound type constructor \"" ++ unCon tyc ++ "\""
+    show (OccursCheck ty1 ty2) =
+         "Occurs check fails when unifying \"" ++ prettyType ty1 ++ "\" with \"" ++
+         prettyType ty2 ++ "\""
+    show (KindOccursCheck k1 k2) =
+         "Occurs check fails when unifying \"" ++ prettyKind k1 ++ "\" with \"" ++
+         prettyKind k2 ++ "\""
+    show (DifferentKinds ty1 k1 ty2 k2) =
+         "Different kinds, \"" ++ prettyType ty1 ++ " : " ++ prettyKind k1 ++
+         "\" and \"" ++ prettyType ty2 ++ " : " ++ prettyKind k2
+    show (TooGeneralTypeSig ts ty) =
+         "Type signature \"" ++ prettyScheme ts ++
+         "\" is too general for inferred type \"" ++ prettyScheme ty ++ "\""
